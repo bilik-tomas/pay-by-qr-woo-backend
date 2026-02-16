@@ -395,10 +395,24 @@ function setStatus(elId, msg, ok=true) {
 }
 
 async function api(path, options = {}) {
-  const resp = await fetch(path, Object.assign({ credentials: "same-origin" }, options));
-  const body = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error(body.detail || JSON.stringify(body) || "Request failed");
-  return body;
+  const controller = new AbortController();
+  const timeoutMs = Number(options.timeout_ms || 8000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const reqOptions = Object.assign({ credentials: "same-origin" }, options, { signal: controller.signal });
+    delete reqOptions.timeout_ms;
+    const resp = await fetch(path, reqOptions);
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(body.detail || JSON.stringify(body) || ("Request failed (" + resp.status + ")"));
+    return body;
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      throw new Error("Request timeout");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function toIsoFromLocal(dateValue) { if (!dateValue) return null; const dt = new Date(dateValue); return Number.isNaN(dt.getTime()) ? null : dt.toISOString(); }
@@ -490,7 +504,7 @@ function downloadCsv(filename, headers, rows) {
 async function refreshLoginOptions() {
   try {
     const username = document.getElementById("username").value.trim();
-    loginOptions = await api("/admin/api/login/options?username=" + encodeURIComponent(username));
+    loginOptions = await api("/admin/api/login/options?username=" + encodeURIComponent(username), { timeout_ms: 4000 });
     updateOtpVisibility();
     renderTurnstile();
   } catch (err) {
@@ -555,7 +569,7 @@ async function logout() { try { await api("/admin/api/logout", { method: "POST" 
 async function checkSession() {
   let hasSession = false;
   try {
-    const session = await api("/admin/api/session");
+    const session = await api("/admin/api/session", { timeout_ms: 4000 });
     hasSession = true;
     document.getElementById("boot_screen").classList.add("hidden");
     document.getElementById("login_screen").classList.add("hidden");
