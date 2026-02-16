@@ -697,8 +697,14 @@ def admin_api_security_license_stats(
 ) -> AdminLicenseRateStatsResponse:
     _require_superadmin(session, db)
     items: list[AdminLicenseRateStatsItem] = []
-    license_keys = redis_client.smembers("stats:license:index")
-    for license_key in sorted(license_keys):
+    redis_license_keys = redis_client.smembers("stats:license:index")
+    db_license_keys = {
+        str(key)
+        for key in db.scalars(select(License.license_key)).all()
+        if isinstance(key, str) and "" != key.strip()
+    }
+    license_keys = sorted(redis_license_keys.union(db_license_keys))
+    for license_key in license_keys:
         stats = redis_client.hgetall(f"stats:license:{license_key}") or {}
         items.append(
             AdminLicenseRateStatsItem(
