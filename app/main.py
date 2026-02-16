@@ -164,6 +164,44 @@ def _pending_2fa_key(username: str) -> str:
     return f"admin:2fa:pending:{username}"
 
 
+def _admin_login_fail_key(ip: str) -> str:
+    return f"admin:login:fail:{ip}"
+
+
+def _admin_login_level_key(ip: str) -> str:
+    return f"admin:login:level:{ip}"
+
+
+def _admin_login_block_key(ip: str) -> str:
+    return f"admin:login:block:{ip}"
+
+
+def _admin_login_block_ttl(ip: str) -> int:
+    ttl = int(redis_client.ttl(_admin_login_block_key(ip)))
+    return ttl if ttl > 0 else 0
+
+
+def _register_admin_login_failure(ip: str) -> None:
+    fail_key = _admin_login_fail_key(ip)
+    level_key = _admin_login_level_key(ip)
+    fails = int(redis_client.incr(fail_key))
+    redis_client.expire(fail_key, 60 * 60)
+    if fails < settings.admin_login_max_attempts:
+        return
+    redis_client.delete(fail_key)
+    level = int(redis_client.incr(level_key))
+    redis_client.expire(level_key, 24 * 60 * 60)
+    duration = settings.admin_login_block_seconds * max(1, level)
+    duration = min(duration, 24 * 60 * 60)
+    redis_client.setex(_admin_login_block_key(ip), duration, "1")
+
+
+def _clear_admin_login_failures(ip: str) -> None:
+    redis_client.delete(_admin_login_fail_key(ip))
+    redis_client.delete(_admin_login_block_key(ip))
+    redis_client.delete(_admin_login_level_key(ip))
+
+
 def _actor_id(ip: str, domain: str) -> str:
     safe_ip = ip or "unknown"
     safe_domain = domain or "-"
@@ -455,26 +493,38 @@ def admin_api_login(
     request: Request,
     db: Session = Depends(get_db),
 ) -> AdminLoginResponse:
+    ip = _client_ip(request)
+    blocked_for = _admin_login_block_ttl(ip)
+    if blocked_for > 0:
+        raise HTTPException(status_code=429, detail=f"too many failed attempts, retry in {blocked_for}s")
+
     if _is_turnstile_enabled():
-        remote_ip = request.client.host if request.client else ""
+        remote_ip = ip
         if not _verify_turnstile_token(payload.turnstile_token, remote_ip):
+            _register_admin_login_failure(ip)
             raise HTTPException(status_code=401, detail="turnstile verification failed")
     row = db.scalar(select(AdminUser).where(AdminUser.username == payload.username).limit(1))
     if not row or not row.is_active:
+        _register_admin_login_failure(ip)
         raise HTTPException(status_code=401, detail="invalid credentials")
     try:
         password_ok = verify_password(payload.password, row.password_hash)
     except Exception as exc:
+        _register_admin_login_failure(ip)
         raise HTTPException(status_code=401, detail="invalid credentials") from exc
     if not password_ok:
+        _register_admin_login_failure(ip)
         raise HTTPException(status_code=401, detail="invalid credentials")
     if row.twofa_enabled:
         try:
             otp_ok = verify_totp(row.twofa_secret, payload.otp_code)
         except Exception as exc:
+            _register_admin_login_failure(ip)
             raise HTTPException(status_code=401, detail="invalid otp code") from exc
         if not otp_ok:
+            _register_admin_login_failure(ip)
             raise HTTPException(status_code=401, detail="invalid otp code")
+    _clear_admin_login_failures(ip)
     token = issue_session_cookie(row.username)
     response.set_cookie(
         SESSION_COOKIE,
