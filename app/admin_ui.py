@@ -100,7 +100,7 @@ ADMIN_HTML = """<!doctype html>
       <div id="turnstile_box" class="hidden"></div>
 
       <div class="row" style="margin-top: 14px;">
-        <button id="btn_login" type="button">Login</button>
+        <button id="btn_login" type="button" onclick="login(); return false;">Login</button>
       </div>
       <div id="status" class="status"></div>
     </div>
@@ -372,6 +372,7 @@ function applySessionInfo(data) {
 
 async function login() {
   try {
+    setStatus("status", "Logging in...");
     const payload = {
       username: document.getElementById("username").value.trim(),
       password: document.getElementById("password").value,
@@ -738,8 +739,18 @@ function bindEvents() {
   document.getElementById("otp_code").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
 }
 
-bindEvents();
-checkSession();
+function initAdminUi() {
+  bindEvents();
+  checkSession();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initAdminUi);
+} else {
+  initAdminUi();
+}
+
+window.login = login;
 </script>
 </body>
 </html>
