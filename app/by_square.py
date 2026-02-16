@@ -124,25 +124,25 @@ def payload_to_framed_png_base64(payload: str, label: str = "PAY by square", qr_
 
 def payload_to_card_png_bytes(
     payload: str,
-    qr_size: int = 460,
+    qr_size: int = 420,
     text_size: int = 20,
     subtitle_text: str = "Naskenujte kod vo svojej bankovej aplikacii",
     brand_text: str = "PAY by square",
 ) -> bytes:
-    qr_img = _resize_qr_nearest(_build_qr_image(payload, border=4, box_size=10), max(260, qr_size))
+    # `qr_size` is treated as final output image size in px.
+    output_size = max(220, min(900, int(qr_size)))
+    qr_target = max(150, int(round(output_size * 0.62)))
+    qr_img = _resize_qr_nearest(_build_qr_image(payload, border=4, box_size=10), qr_target)
     qr_w, qr_h = qr_img.size
 
     safe_text_size = max(12, min(42, int(text_size)))
     scale = safe_text_size / 20.0
 
-    pad_x = max(28, int(round(42 * scale)))
-    pad_y = max(24, int(round(34 * scale)))
-    subtitle_top = max(12, int(round(16 * scale)))
-    subtitle_to_qr_gap = max(12, int(round(16 * scale)))
-    qr_to_brand_gap = max(12, int(round(14 * scale)))
-    brand_to_bottom_gap = max(14, int(round(18 * scale)))
-
-    card_w = qr_w + (pad_x * 2)
+    subtitle_top = max(10, int(round(output_size * 0.05)))
+    subtitle_to_qr_gap = max(8, int(round(output_size * 0.03)))
+    qr_to_brand_gap = max(8, int(round(output_size * 0.03)))
+    brand_to_bottom_gap = max(10, int(round(output_size * 0.05)))
+    card_w = output_size
 
     # Card background.
     brand_font = _load_font(
@@ -150,14 +150,14 @@ def payload_to_card_png_bytes(
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "DejaVuSans-Bold.ttf",
         ],
-        max(22, int(round(40 * scale))),
+        max(14, int(round((safe_text_size + 16) * (output_size / 420.0)))),
     )
     sub_font = _load_font(
         [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "DejaVuSans.ttf",
         ],
-        max(12, int(round(20 * scale))),
+        max(10, int(round(safe_text_size * (output_size / 420.0)))),
     )
 
     # Probe text sizes to compute dynamic header height.
@@ -174,7 +174,7 @@ def payload_to_card_png_bytes(
 
     qr_y = subtitle_top + subtitle_h + subtitle_to_qr_gap
     brand_y = qr_y + qr_h + qr_to_brand_gap
-    card_h = brand_y + title_h + brand_to_bottom_gap
+    card_h = max(output_size, brand_y + title_h + brand_to_bottom_gap)
 
     canvas = Image.new("RGB", (card_w, card_h), (245, 248, 255))
     draw = ImageDraw.Draw(canvas)
@@ -198,9 +198,11 @@ def payload_to_card_png_bytes(
 
     # QR zone.
     qr_x = (card_w - qr_w) // 2
+    qr_border = max(5, int(round(output_size * 0.02)))
+    qr_radius = max(10, int(round(output_size * 0.04)))
     draw.rounded_rectangle(
-        [qr_x - 8, qr_y - 8, qr_x + qr_w + 8, qr_y + qr_h + 8],
-        radius=16,
+        [qr_x - qr_border, qr_y - qr_border, qr_x + qr_w + qr_border, qr_y + qr_h + qr_border],
+        radius=qr_radius,
         fill=(255, 255, 255),
         outline=(226, 233, 247),
         width=2,

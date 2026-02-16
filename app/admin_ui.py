@@ -841,13 +841,23 @@ async function generatePbsPreview() {
     const style = document.getElementById("preview_style").value;
     const size = document.getElementById("preview_size").value || "420";
     const textSize = document.getElementById("preview_text_size").value || "20";
+    const numericSize = Math.max(220, Math.min(900, parseInt(size, 10) || 420));
     const query = "?style=" + encodeURIComponent(style) + "&size=" + encodeURIComponent(size) + "&text_size=" + encodeURIComponent(textSize);
     const data = await api("/admin/api/preview/pbs" + query, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    document.getElementById("preview_qr_img").src = data.qr_data_url || "";
+    const previewImg = document.getElementById("preview_qr_img");
+    const previewWrap = previewImg.closest(".qr-wrap");
+    previewImg.src = data.qr_data_url || "";
+    previewImg.style.width = numericSize + "px";
+    previewImg.style.maxWidth = "100%";
+    previewImg.style.height = "auto";
+    if (previewWrap) {
+      previewWrap.style.width = Math.min(numericSize + 24, 1000) + "px";
+      previewWrap.style.maxWidth = "100%";
+    }
     document.getElementById("preview_payload").value = data.payload || "";
     setStatus("preview_status", "Preview generated.");
   } catch (err) {
