@@ -874,12 +874,15 @@ def pbs_generate(
 def pbs_generate_png(
     payload: PBSGenerateRequest,
     framed: bool = False,
+    size: int = 420,
+    style: str = "plain",
     auth: AuthContext = Depends(_auth_dep),
 ) -> Response:
     del auth
     try:
         pbs_payload = generate_payload(payload)
-        png_bytes = payload_to_png_bytes(pbs_payload, framed=framed)
+        safe_size = max(220, min(900, int(size)))
+        png_bytes = payload_to_png_bytes(pbs_payload, framed=framed, size=safe_size, style=style)
         return Response(
             content=png_bytes,
             media_type="image/png",

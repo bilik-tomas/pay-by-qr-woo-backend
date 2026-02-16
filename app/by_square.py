@@ -46,6 +46,21 @@ def payload_to_svg(payload: str) -> str:
     return output.getvalue().decode("utf-8")
 
 
+def _build_qr_image(payload: str, border: int = 4, box_size: int = 10) -> Image.Image:
+    qr = qrcode.QRCode(border=border, box_size=box_size)
+    qr.add_data(payload)
+    qr.make(fit=True)
+    return qr.make_image(fill_color="black", back_color="white").convert("RGB")
+
+
+def _resize_qr_nearest(image: Image.Image, target_size: int) -> Image.Image:
+    if target_size <= 0:
+        return image
+    if image.width == target_size and image.height == target_size:
+        return image
+    return image.resize((target_size, target_size), resample=Image.Resampling.NEAREST)
+
+
 def payload_to_png_base64(payload: str) -> str:
     qr = qrcode.QRCode(border=2, box_size=8)
     qr.add_data(payload)
@@ -57,12 +72,9 @@ def payload_to_png_base64(payload: str) -> str:
     return base64.b64encode(output.getvalue()).decode("ascii")
 
 
-def payload_to_framed_png_base64(payload: str, label: str = "PAY by square") -> str:
+def payload_to_framed_png_base64(payload: str, label: str = "PAY by square", qr_size: int = 420) -> str:
     # Keep QR quiet zone untouched; frame is only around the full QR image.
-    qr = qrcode.QRCode(border=4, box_size=8)
-    qr.add_data(payload)
-    qr.make(fit=True)
-    qr_img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+    qr_img = _resize_qr_nearest(_build_qr_image(payload, border=4, box_size=10), max(220, qr_size))
 
     qr_w, qr_h = qr_img.size
     pad = 16
@@ -98,7 +110,77 @@ def payload_to_framed_png_base64(payload: str, label: str = "PAY by square") -> 
     return base64.b64encode(output.getvalue()).decode("ascii")
 
 
-def payload_to_png_bytes(payload: str, framed: bool = False, label: str = "PAY by square") -> bytes:
+def payload_to_card_png_bytes(payload: str, qr_size: int = 460) -> bytes:
+    qr_img = _resize_qr_nearest(_build_qr_image(payload, border=4, box_size=10), max(260, qr_size))
+    qr_w, qr_h = qr_img.size
+
+    pad_x = 42
+    pad_y = 34
+    title_h = 58
+    subtitle_h = 30
+    card_w = qr_w + (pad_x * 2)
+    card_h = qr_h + (pad_y * 2) + title_h + subtitle_h
+
+    # Card background.
+    canvas = Image.new("RGB", (card_w, card_h), (245, 248, 255))
+    draw = ImageDraw.Draw(canvas)
+
+    # Rounded card.
+    draw.rounded_rectangle(
+        [4, 4, card_w - 5, card_h - 5],
+        radius=26,
+        fill=(255, 255, 255),
+        outline=(203, 216, 241),
+        width=2,
+    )
+
+    # Header texts.
+    try:
+        title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 40)
+        sub_font = ImageFont.truetype("DejaVuSans.ttf", 20)
+    except Exception:
+        title_font = ImageFont.load_default()
+        sub_font = ImageFont.load_default()
+
+    title = "PAY by square"
+    subtitle = "Naskenujte kod vo svojej bankovej aplikacii"
+    title_box = draw.textbbox((0, 0), title, font=title_font)
+    subtitle_box = draw.textbbox((0, 0), subtitle, font=sub_font)
+    title_w = title_box[2] - title_box[0]
+    subtitle_w = subtitle_box[2] - subtitle_box[0]
+    draw.text(((card_w - title_w) // 2, 16), title, fill=(21, 47, 97), font=title_font)
+    draw.text(((card_w - subtitle_w) // 2, 62), subtitle, fill=(84, 102, 140), font=sub_font)
+
+    # QR zone.
+    qr_x = (card_w - qr_w) // 2
+    qr_y = title_h + subtitle_h + pad_y // 2
+    draw.rounded_rectangle(
+        [qr_x - 8, qr_y - 8, qr_x + qr_w + 8, qr_y + qr_h + 8],
+        radius=16,
+        fill=(255, 255, 255),
+        outline=(226, 233, 247),
+        width=2,
+    )
+    canvas.paste(qr_img, (qr_x, qr_y))
+
+    out = BytesIO()
+    canvas.save(out, format="PNG")
+    return out.getvalue()
+
+
+def payload_to_png_bytes(
+    payload: str,
+    framed: bool = False,
+    label: str = "PAY by square",
+    size: int = 420,
+    style: str = "plain",
+) -> bytes:
+    style = (style or "plain").strip().lower()
+    if style == "card":
+        return payload_to_card_png_bytes(payload, qr_size=size)
     if framed:
-        return base64.b64decode(payload_to_framed_png_base64(payload, label=label))
-    return base64.b64decode(payload_to_png_base64(payload))
+        return base64.b64decode(payload_to_framed_png_base64(payload, label=label, qr_size=size))
+    plain_qr = _resize_qr_nearest(_build_qr_image(payload, border=4, box_size=10), max(220, size))
+    out = BytesIO()
+    plain_qr.save(out, format="PNG")
+    return out.getvalue()
