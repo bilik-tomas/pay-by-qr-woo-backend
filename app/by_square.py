@@ -13,6 +13,7 @@ def generate_payload(data: PBSGenerateRequest) -> str:
         "amount": float(data.amount),
         "iban": data.iban,
         "swift": data.bic,
+        "beneficiary_name": data.recipient_name,
         "variable_symbol": data.variable_symbol,
         "note": data.message,
         "currency": data.currency,
@@ -23,10 +24,13 @@ def generate_payload(data: PBSGenerateRequest) -> str:
     try:
         return generate(**kwargs)
     except TypeError:
-        # Compatibility fallback for older pay-by-square library versions
-        # that do not support the due date argument.
+        # Compatibility fallback for older pay-by-square library versions.
         kwargs.pop("payment_due_date", None)
-        return generate(**kwargs)
+        try:
+            return generate(**kwargs)
+        except TypeError:
+            kwargs.pop("beneficiary_name", None)
+            return generate(**kwargs)
 
 
 def payload_to_svg(payload: str) -> str:

@@ -128,6 +128,7 @@ def main() -> int:
             "currency": "EUR",
             "iban": "SK1583300000002503435769",
             "bic": "FIOZSKBAXXX",
+            "recipient_name": "Zempres s.r.o.",
             "variable_symbol": "857",
             "message": "Platba za objednavku c.857",
             "due_date": "2026-02-19",
@@ -142,6 +143,12 @@ def main() -> int:
         headers={"X-Admin-Token": ADMIN_TOKEN},
     )
     print("audit recent:", status, {"count": len(body.get("items", [])) if isinstance(body, dict) else 0})
+
+    status, body = request_json(
+        "/v1/admin/license/list?limit=5",
+        headers={"X-Admin-Token": ADMIN_TOKEN},
+    )
+    print("license list:", status, {"count": len(body.get("items", [])) if isinstance(body, dict) else 0})
     return 0
 
 

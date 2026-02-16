@@ -5,10 +5,12 @@ import uuid
 import secrets
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from redis import Redis
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from .admin_ui import ADMIN_HTML
 from .by_square import generate_payload, payload_to_svg
 from .config import settings
 from .db import SessionLocal, get_db
@@ -19,6 +21,8 @@ from .schemas import (
     AdminClientResponse,
     AdminClientRotateSecretRequest,
     AdminClientUpsertRequest,
+    AdminLicenseItem,
+    AdminLicenseListResponse,
     AdminLicenseUpsertRequest,
     AdminLicenseUpsertResponse,
     LicenseValidateRequest,
@@ -83,6 +87,11 @@ def health() -> dict:
     except Exception:
         redis_ok = False
     return {"ok": True, "redis": redis_ok}
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page() -> str:
+    return ADMIN_HTML
 
 
 @app.post("/v1/pbs/generate", response_model=PBSGenerateResponse)
@@ -159,6 +168,42 @@ def admin_license_upsert(
     db.commit()
 
     return AdminLicenseUpsertResponse(saved=True)
+
+
+@app.get("/v1/admin/license/list", response_model=AdminLicenseListResponse)
+def admin_license_list(
+    q: str = "",
+    limit: int = 100,
+    _: None = Depends(_admin_token_dep),
+    db: Session = Depends(get_db),
+) -> AdminLicenseListResponse:
+    safe_limit = max(1, min(500, limit))
+    stmt = select(License).order_by(desc(License.updated_at)).limit(safe_limit)
+    query = q.strip().lower()
+    rows = db.scalars(stmt).all()
+    if query:
+        rows = [
+            row
+            for row in rows
+            if query in row.license_key.lower()
+            or query in row.domain.lower()
+            or query in row.note.lower()
+        ]
+    return AdminLicenseListResponse(
+        items=[
+            AdminLicenseItem(
+                license_key=row.license_key,
+                status=row.status,
+                domain=row.domain,
+                plugin_instance_id=row.plugin_instance_id,
+                expires_at=row.expires_at,
+                note=row.note,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
+    )
 
 
 @app.post("/v1/admin/client/upsert", response_model=AdminClientResponse)

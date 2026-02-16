@@ -140,3 +140,8 @@ curl -X POST https://api.example.com/v1/admin/license/upsert \
   -H "X-Admin-Token: <LONG_RANDOM_ADMIN_TOKEN>" \
   -d '{"license_key":"lic_demo_123456","status":"active","domain":"shop.example.com","plugin_instance_id":"","note":"seed"}'
 ```
+
+Admin web UI:
+- open `https://api.example.com/admin`
+- paste `X-Admin-Token`
+- manage licenses directly in browser

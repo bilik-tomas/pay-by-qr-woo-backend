@@ -44,9 +44,11 @@ curl -s http://127.0.0.1:8080/health
 - `POST /v1/pbs/generate` (HMAC required)
 - `POST /v1/license/validate` (HMAC required)
 - `POST /v1/admin/license/upsert` (X-Admin-Token required)
+- `GET /v1/admin/license/list` (X-Admin-Token required)
 - `POST /v1/admin/client/upsert` (X-Admin-Token required)
 - `POST /v1/admin/client/rotate-secret` (X-Admin-Token required)
 - `GET /v1/admin/audit/recent` (X-Admin-Token required)
+- `GET /admin` (web UI for license management)
 
 ## Database Migration
 After containers are up, run:

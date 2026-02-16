@@ -10,6 +10,7 @@ class PBSGenerateRequest(BaseModel):
     currency: str = Field(default="EUR", min_length=3, max_length=3)
     iban: str = Field(min_length=10, max_length=34)
     bic: str = Field(default="", max_length=11)
+    recipient_name: str = Field(default="", max_length=140)
     variable_symbol: str = Field(default="", max_length=20)
     message: str = Field(default="", max_length=140)
     due_date: date | None = None
@@ -66,6 +67,21 @@ class AdminLicenseUpsertRequest(BaseModel):
 
 class AdminLicenseUpsertResponse(BaseModel):
     saved: bool = True
+
+
+class AdminLicenseItem(BaseModel):
+    license_key: str
+    status: str
+    domain: str
+    plugin_instance_id: str
+    expires_at: datetime | None = None
+    note: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminLicenseListResponse(BaseModel):
+    items: list[AdminLicenseItem]
 
 
 class AdminClientUpsertRequest(BaseModel):

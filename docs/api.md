@@ -38,6 +38,7 @@ Request JSON:
   "currency": "EUR",
   "iban": "SK1583300000002503435769",
   "bic": "FIOZSKBAXXX",
+  "recipient_name": "Zempres s.r.o.",
   "variable_symbol": "857",
   "message": "Platba za objednavku c.857",
   "due_date": "2026-02-19"
@@ -160,6 +161,18 @@ Returns latest audit records.
 
 Header:
 - `X-Admin-Token`
+
+## GET /v1/admin/license/list?limit=100&q=
+Returns recent licenses for admin UI.
+
+Header:
+- `X-Admin-Token`
+
+## GET /admin
+Simple browser UI for license management.
+- paste `X-Admin-Token`
+- list licenses
+- create/edit license records
 
 ## Error Codes
 - `401`: invalid/missing auth, timestamp expired, nonce replay, invalid signature
