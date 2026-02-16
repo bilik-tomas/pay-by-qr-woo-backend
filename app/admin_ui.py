@@ -20,6 +20,8 @@ ADMIN_HTML = """<!doctype html>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; color: var(--text); background: radial-gradient(circle at 10% 0%, #e7eefc 0, var(--bg) 48%); }
     .hidden { display: none !important; }
+    body.booting #login_screen,
+    body.booting #app { display: none !important; }
 
     .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
     .auth-card { width: 100%; max-width: 460px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 24px; }
@@ -83,7 +85,7 @@ ADMIN_HTML = """<!doctype html>
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
-<body>
+<body class="booting">
   <div id="boot_screen" class="auth-screen">
     <div class="auth-card">
       <h1>Pay By QR Admin</h1>
@@ -558,11 +560,13 @@ async function checkSession() {
     await refreshLoginOptions();
     applySessionInfo(session);
     await loadAll();
+    document.body.classList.remove("booting");
   } catch (err) {
     document.getElementById("boot_screen").classList.add("hidden");
     document.getElementById("app").classList.add("hidden");
     document.getElementById("login_screen").classList.remove("hidden");
     await refreshLoginOptions();
+    document.body.classList.remove("booting");
   }
 }
 
