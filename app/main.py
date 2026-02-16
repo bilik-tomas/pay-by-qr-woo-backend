@@ -856,6 +856,7 @@ def admin_api_preview_pbs(
     style: str = "card",
     size: int = 420,
     text_size: int = 20,
+    subtitle_text_size: int = 20,
     _=Depends(admin_session_dep),
 ) -> AdminPbsPreviewResponse:
     try:
@@ -865,12 +866,14 @@ def admin_api_preview_pbs(
             safe_style = "card"
         safe_size = max(220, min(900, int(size)))
         safe_text_size = max(12, min(42, int(text_size)))
+        safe_subtitle_text_size = max(10, min(36, int(subtitle_text_size)))
         png_bytes = payload_to_png_bytes(
             pbs_payload,
             framed=False,
             size=safe_size,
             style=safe_style,
             text_size=safe_text_size,
+            subtitle_text_size=safe_subtitle_text_size,
             subtitle_text="Naskenujte kod vo svojej bankovej aplikacii",
             brand_text="PAY by square",
         )
@@ -909,6 +912,7 @@ def pbs_generate_png(
     framed: bool = False,
     size: int = 420,
     text_size: int = 20,
+    subtitle_text_size: int = 20,
     style: str = "plain",
     subtitle: str = "Naskenujte kod vo svojej bankovej aplikacii",
     brand: str = "PAY by square",
@@ -919,6 +923,7 @@ def pbs_generate_png(
         pbs_payload = generate_payload(payload)
         safe_size = max(220, min(900, int(size)))
         safe_text_size = max(12, min(42, int(text_size)))
+        safe_subtitle_text_size = max(10, min(36, int(subtitle_text_size)))
         safe_subtitle = (subtitle or "").strip()[:120]
         safe_brand = (brand or "").strip()[:60]
         png_bytes = payload_to_png_bytes(
@@ -927,6 +932,7 @@ def pbs_generate_png(
             size=safe_size,
             style=style,
             text_size=safe_text_size,
+            subtitle_text_size=safe_subtitle_text_size,
             subtitle_text=safe_subtitle,
             brand_text=safe_brand,
         )

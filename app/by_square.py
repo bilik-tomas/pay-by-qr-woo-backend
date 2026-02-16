@@ -126,6 +126,7 @@ def payload_to_card_png_bytes(
     payload: str,
     qr_size: int = 420,
     text_size: int = 20,
+    subtitle_text_size: int = 20,
     subtitle_text: str = "Naskenujte kod vo svojej bankovej aplikacii",
     brand_text: str = "PAY by square",
 ) -> bytes:
@@ -136,6 +137,7 @@ def payload_to_card_png_bytes(
     qr_w, qr_h = qr_img.size
 
     safe_text_size = max(12, min(42, int(text_size)))
+    safe_subtitle_text_size = max(10, min(36, int(subtitle_text_size)))
     scale = safe_text_size / 20.0
 
     subtitle_top = max(10, int(round(output_size * 0.05)))
@@ -157,7 +159,7 @@ def payload_to_card_png_bytes(
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "DejaVuSans.ttf",
         ],
-        max(10, int(round(safe_text_size * (output_size / 420.0)))),
+        max(10, int(round(safe_subtitle_text_size * (output_size / 420.0)))),
     )
 
     # Probe text sizes to compute dynamic header height.
@@ -220,6 +222,7 @@ def payload_to_png_bytes(
     label: str = "PAY by square",
     size: int = 420,
     text_size: int = 20,
+    subtitle_text_size: int = 20,
     style: str = "plain",
     subtitle_text: str = "Naskenujte kod vo svojej bankovej aplikacii",
     brand_text: str = "PAY by square",
@@ -230,6 +233,7 @@ def payload_to_png_bytes(
             payload,
             qr_size=size,
             text_size=text_size,
+            subtitle_text_size=subtitle_text_size,
             subtitle_text=subtitle_text,
             brand_text=brand_text,
         )

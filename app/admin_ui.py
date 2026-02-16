@@ -310,6 +310,10 @@ ADMIN_HTML = """<!doctype html>
                 <label for="preview_text_size">Card text size (px)</label>
                 <input id="preview_text_size" type="number" min="12" max="42" step="1" value="20">
               </div>
+              <div class="field">
+                <label for="preview_subtitle_text_size">Subtitle text size (px)</label>
+                <input id="preview_subtitle_text_size" type="number" min="10" max="36" step="1" value="20">
+              </div>
             </div>
             <div class="field">
               <label for="preview_recipient">Recipient name</label>
@@ -841,8 +845,12 @@ async function generatePbsPreview() {
     const style = document.getElementById("preview_style").value;
     const size = document.getElementById("preview_size").value || "420";
     const textSize = document.getElementById("preview_text_size").value || "20";
+    const subtitleTextSize = document.getElementById("preview_subtitle_text_size").value || "20";
     const numericSize = Math.max(220, Math.min(900, parseInt(size, 10) || 420));
-    const query = "?style=" + encodeURIComponent(style) + "&size=" + encodeURIComponent(size) + "&text_size=" + encodeURIComponent(textSize);
+    const query = "?style=" + encodeURIComponent(style)
+      + "&size=" + encodeURIComponent(size)
+      + "&text_size=" + encodeURIComponent(textSize)
+      + "&subtitle_text_size=" + encodeURIComponent(subtitleTextSize);
     const data = await api("/admin/api/preview/pbs" + query, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
