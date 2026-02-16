@@ -883,7 +883,10 @@ def pbs_generate_png(
         return Response(
             content=png_bytes,
             media_type="image/png",
-            headers={"Cache-Control": "no-store, max-age=0"},
+            headers={
+                "Cache-Control": "no-store, max-age=0",
+                "X-PBS-Payload-B64": base64.b64encode(pbs_payload.encode("utf-8")).decode("ascii"),
+            },
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"generation failed: {exc}") from exc
