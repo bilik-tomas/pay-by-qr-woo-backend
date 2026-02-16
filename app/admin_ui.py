@@ -392,6 +392,8 @@ ADMIN_HTML = """<!doctype html>
 <script>
 let loginOptions = { twofa_required: false, turnstile_required: false, turnstile_site_key: "" };
 let turnstileWidgetId = null;
+let loginStep = "password";
+let otpChallengeToken = "";
 let searchTimer = null;
 let sessionUser = "";
 let isSuperadmin = false;
@@ -444,7 +446,14 @@ function renderTurnstile() {
 }
 
 function getTurnstileToken() { return (!window.turnstile || turnstileWidgetId === null) ? "" : (window.turnstile.getResponse(turnstileWidgetId) || ""); }
-function updateOtpVisibility() { document.getElementById("otp_field").classList.toggle("hidden", !loginOptions.twofa_required); }
+function updateOtpVisibility() { document.getElementById("otp_field").classList.toggle("hidden", loginStep !== "otp"); }
+
+function resetLoginStep() {
+  loginStep = "password";
+  otpChallengeToken = "";
+  document.getElementById("otp_code").value = "";
+  updateOtpVisibility();
+}
 
 function clearLoginFieldErrors() {
   document.getElementById("otp_code").classList.remove("input-error");
@@ -514,9 +523,7 @@ function downloadCsv(filename, headers, rows) {
 
 async function refreshLoginOptions() {
   try {
-    const username = document.getElementById("username").value.trim();
-    loginOptions = await api("/admin/api/login/options?username=" + encodeURIComponent(username), { timeout_ms: 4000 });
-    updateOtpVisibility();
+    loginOptions = await api("/admin/api/login/options", { timeout_ms: 4000 });
     renderTurnstile();
   } catch (err) {
     setStatus("status", err.message, false);
@@ -543,26 +550,41 @@ function applySessionInfo(data) {
 async function login() {
   try {
     clearLoginFieldErrors();
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+    if (!username || !password) {
+      setStatus("status", "Username and password are required.", false);
+      return;
+    }
     const otpValue = document.getElementById("otp_code").value.trim();
-    if (loginOptions.twofa_required && !otpValue) {
+    if (loginStep === "otp" && !otpValue) {
       document.getElementById("otp_code").classList.add("input-error");
       setStatus("status", "TOTP code is required.", false);
       return;
     }
     const turnstileToken = getTurnstileToken();
-    if (loginOptions.turnstile_required && !turnstileToken) {
+    if (loginStep === "password" && loginOptions.turnstile_required && !turnstileToken) {
       setStatus("status", "Please complete Turnstile verification.", false);
       return;
     }
 
-    setStatus("status", "Logging in...");
+    setStatus("status", loginStep === "otp" ? "Verifying OTP..." : "Verifying credentials...");
     const payload = {
-      username: document.getElementById("username").value.trim(),
-      password: document.getElementById("password").value,
-      otp_code: otpValue,
-      turnstile_token: turnstileToken
+      username: username,
+      password: password,
+      otp_code: loginStep === "otp" ? otpValue : "",
+      otp_challenge_token: otpChallengeToken,
+      turnstile_token: loginStep === "password" ? turnstileToken : ""
     };
-    await api("/admin/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const loginResp = await api("/admin/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (loginResp && loginResp.otp_required) {
+      loginStep = "otp";
+      otpChallengeToken = String(loginResp.otp_challenge_token || "");
+      updateOtpVisibility();
+      document.getElementById("otp_code").focus();
+      setStatus("status", "Credentials verified. Enter your TOTP code.", true);
+      return;
+    }
     const session = await api("/admin/api/session");
     document.getElementById("boot_screen").classList.add("hidden");
     document.getElementById("login_screen").classList.add("hidden");
@@ -572,7 +594,9 @@ async function login() {
     await loadAll();
   } catch (err) {
     setStatus("status", err.message, false);
-    resetTurnstile();
+    if (loginStep !== "otp") {
+      resetTurnstile();
+    }
   }
 }
 
@@ -995,7 +1019,8 @@ function bindEvents() {
     showTab(requested, false);
   });
 
-  document.getElementById("username").addEventListener("input", refreshLoginOptions);
+  document.getElementById("username").addEventListener("input", () => { resetLoginStep(); refreshLoginOptions(); });
+  document.getElementById("password").addEventListener("input", resetLoginStep);
   document.getElementById("search").addEventListener("input", debounceLoadLicenses);
   document.getElementById("password").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
   document.getElementById("otp_code").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
@@ -1004,6 +1029,7 @@ function bindEvents() {
 
 function initAdminUi() {
   bindEvents();
+  resetLoginStep();
   showTab(tabFromHash() || "licenses", false);
   bootRevealTimer = setTimeout(() => {
     if (document.body.classList.contains("booting")) {

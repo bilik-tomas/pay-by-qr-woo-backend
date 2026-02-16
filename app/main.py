@@ -188,6 +188,27 @@ def _admin_login_block_ttl(ip: str) -> int:
     return ttl if ttl > 0 else 0
 
 
+def _admin_otp_challenge_key(token: str) -> str:
+    return f"admin:otp:challenge:{token}"
+
+
+def _issue_admin_otp_challenge(username: str, ip: str) -> str:
+    token = secrets.token_urlsafe(24)
+    redis_client.setex(_admin_otp_challenge_key(token), 300, f"{username}|{ip}")
+    return token
+
+
+def _consume_admin_otp_challenge(token: str, username: str, ip: str) -> bool:
+    if not token:
+        return False
+    key = _admin_otp_challenge_key(token)
+    value = redis_client.get(key)
+    if not value:
+        return False
+    redis_client.delete(key)
+    return value == f"{username}|{ip}"
+
+
 def _register_admin_login_failure(ip: str) -> None:
     fail_key = _admin_login_fail_key(ip)
     level_key = _admin_login_level_key(ip)
@@ -234,14 +255,61 @@ def _extract_domain_and_license(payload: dict[str, Any]) -> tuple[str, str]:
     return domain, license_key
 
 
-def _enforce_license_qr_limits(request: Request, db: Session) -> None:
-    license_key = str(getattr(request.state, "request_license_key", "") or "").strip()
-    if not license_key:
-        return
+def _extract_generation_license_context(request: Request) -> tuple[str, str, str]:
+    payload = getattr(request.state, "payload", {}) or {}
+    license_key = str(payload.get("license_key", "")).strip()
+    domain = _normalize_domain(str(payload.get("domain", "")).strip())
+    plugin_instance_id = str(payload.get("plugin_instance_id", "")).strip()
+    return license_key, domain, plugin_instance_id
+
+
+def _validate_generation_license(request: Request, db: Session) -> str:
+    ip = _client_ip(request)
+    license_key, requested_domain, plugin_instance_id = _extract_generation_license_context(request)
+    if not license_key or not requested_domain or not plugin_instance_id:
+        _register_failure(ip, requested_domain, "missing license context")
+        raise HTTPException(status_code=403, detail="missing license context")
 
     license_row = db.scalar(select(License).where(License.license_key == license_key).limit(1))
     if not license_row:
-        return
+        _register_failure(ip, requested_domain, "invalid license")
+        raise HTTPException(status_code=403, detail="invalid license")
+
+    if license_row.status != "active":
+        _register_failure(ip, requested_domain, "license not active")
+        raise HTTPException(status_code=403, detail="license not active")
+
+    if license_row.expires_at and license_row.expires_at < datetime.now(timezone.utc):
+        _register_failure(ip, requested_domain, "license expired")
+        raise HTTPException(status_code=403, detail="license expired")
+
+    if not _domain_matches(license_row.domain, requested_domain):
+        _register_failure(ip, requested_domain, "domain mismatch")
+        raise HTTPException(status_code=403, detail="domain mismatch")
+
+    if license_row.plugin_instance_id and license_row.plugin_instance_id != plugin_instance_id:
+        _register_failure(ip, requested_domain, "instance mismatch")
+        raise HTTPException(status_code=403, detail="instance mismatch")
+
+    changed = False
+    if not license_row.domain:
+        license_row.domain = requested_domain
+        changed = True
+    if not license_row.plugin_instance_id:
+        license_row.plugin_instance_id = plugin_instance_id
+        changed = True
+    if changed:
+        db.add(license_row)
+        db.commit()
+
+    return license_key
+
+
+def _enforce_license_qr_limits(request: Request, db: Session) -> None:
+    license_key = _validate_generation_license(request, db)
+    license_row = db.scalar(select(License).where(License.license_key == license_key).limit(1))
+    if not license_row:
+        raise HTTPException(status_code=403, detail="invalid license")
 
     now = datetime.now(timezone.utc)
     day_key = now.strftime("%Y%m%d")
@@ -267,6 +335,15 @@ def _enforce_license_qr_limits(request: Request, db: Session) -> None:
     if monthly_hits == 1:
         redis_client.expire(monthly_counter_key, 45 * 24 * 3600)
 
+    minute_counter_key = f"stats:license:minute:{license_key}:{int(time.time() // 60)}"
+    minute_hits = int(redis_client.incr(minute_counter_key))
+    if minute_hits == 1:
+        redis_client.expire(minute_counter_key, 70)
+
+    redis_client.hincrby(f"stats:license:{license_key}", "total_calls", 1)
+    redis_client.hset(f"stats:license:{license_key}", "current_minute_calls", str(minute_hits))
+    redis_client.hset(f"stats:license:{license_key}", "updated_at", str(int(time.time())))
+    redis_client.sadd("stats:license:index", license_key)
     redis_client.hset(f"stats:license:{license_key}", "daily_qr_calls", str(daily_hits))
     redis_client.hset(f"stats:license:{license_key}", "monthly_qr_calls", str(monthly_hits))
 
@@ -542,11 +619,6 @@ def admin_api_login(
     if blocked_for > 0:
         raise HTTPException(status_code=429, detail=f"too many failed attempts, retry in {blocked_for}s")
 
-    if _is_turnstile_enabled():
-        remote_ip = ip
-        if not _verify_turnstile_token(payload.turnstile_token, remote_ip):
-            _register_admin_login_failure(ip)
-            raise HTTPException(status_code=401, detail="turnstile verification failed")
     row = db.scalar(select(AdminUser).where(AdminUser.username == payload.username).limit(1))
     if not row or not row.is_active:
         _register_admin_login_failure(ip)
@@ -559,7 +631,24 @@ def admin_api_login(
     if not password_ok:
         _register_admin_login_failure(ip)
         raise HTTPException(status_code=401, detail="invalid credentials")
+
+    if row.twofa_enabled and not payload.otp_code.strip():
+        if _is_turnstile_enabled():
+            if not _verify_turnstile_token(payload.turnstile_token, ip):
+                _register_admin_login_failure(ip)
+                raise HTTPException(status_code=401, detail="turnstile verification failed")
+        challenge_token = _issue_admin_otp_challenge(row.username, ip)
+        return AdminLoginResponse(
+            ok=True,
+            username=row.username,
+            otp_required=True,
+            otp_challenge_token=challenge_token,
+        )
+
     if row.twofa_enabled:
+        if not _consume_admin_otp_challenge(payload.otp_challenge_token.strip(), row.username, ip):
+            _register_admin_login_failure(ip)
+            raise HTTPException(status_code=401, detail="otp challenge expired")
         try:
             otp_ok = verify_totp(row.twofa_secret, payload.otp_code)
         except Exception as exc:
@@ -568,6 +657,11 @@ def admin_api_login(
         if not otp_ok:
             _register_admin_login_failure(ip)
             raise HTTPException(status_code=401, detail="invalid otp code")
+    elif _is_turnstile_enabled():
+        if not _verify_turnstile_token(payload.turnstile_token, ip):
+            _register_admin_login_failure(ip)
+            raise HTTPException(status_code=401, detail="turnstile verification failed")
+
     _clear_admin_login_failures(ip)
     token = issue_session_cookie(row.username)
     response.set_cookie(
@@ -578,14 +672,14 @@ def admin_api_login(
         samesite="lax",
         max_age=12 * 60 * 60,
     )
-    return AdminLoginResponse(ok=True, username=row.username)
+    return AdminLoginResponse(ok=True, username=row.username, otp_required=False, otp_challenge_token="")
 
 
 @app.get("/admin/api/login/options", response_model=AdminLoginOptionsResponse)
 def admin_api_login_options(username: str = "", db: Session = Depends(get_db)) -> AdminLoginOptionsResponse:
-    user = db.scalar(select(AdminUser).where(AdminUser.username == username.strip()).limit(1))
+    del username, db
     return AdminLoginOptionsResponse(
-        twofa_required=bool(user and user.is_active and user.twofa_enabled),
+        twofa_required=False,
         turnstile_required=_is_turnstile_enabled(),
         turnstile_site_key=settings.admin_turnstile_site_key.strip() if _is_turnstile_enabled() else "",
     )
@@ -949,6 +1043,8 @@ def pbs_generate(
             qr_png_base64=qr_png_base64,
             qr_png_framed_base64=qr_png_framed_base64,
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"generation failed: {exc}") from exc
 
@@ -995,6 +1091,8 @@ def pbs_generate_png(
                 "X-PBS-Payload-B64": base64.b64encode(pbs_payload.encode("utf-8")).decode("ascii"),
             },
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"generation failed: {exc}") from exc
 

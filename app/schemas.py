@@ -134,12 +134,15 @@ class AdminLoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=255)
     otp_code: str = Field(default="", max_length=12)
+    otp_challenge_token: str = Field(default="", max_length=128)
     turnstile_token: str = Field(default="", max_length=4096)
 
 
 class AdminLoginResponse(BaseModel):
     ok: bool = True
     username: str
+    otp_required: bool = False
+    otp_challenge_token: str = ""
 
 
 class AdminSessionInfoResponse(BaseModel):
