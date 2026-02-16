@@ -113,8 +113,12 @@ ADMIN_HTML = """<!doctype html>
       </div>
       <div id="turnstile_box" class="hidden"></div>
 
-      <div class="row" style="margin-top: 14px;">
-        <button id="btn_login" type="button" onclick="login(); return false;">Login</button>
+      <div id="login_primary_actions" class="row" style="margin-top: 14px;">
+        <button id="btn_login" type="button" onclick="login(); return false;">Continue</button>
+      </div>
+      <div id="login_otp_actions" class="row hidden" style="margin-top: 14px;">
+        <button id="btn_login_otp_confirm" type="button" onclick="confirmOtpLogin(); return false;">Confirm</button>
+        <button id="btn_login_otp_cancel" type="button" class="secondary" onclick="cancelOtpLogin(); return false;">Cancel</button>
       </div>
       <div id="status" class="status"></div>
     </div>
@@ -434,6 +438,12 @@ function resetTurnstile() { if (window.turnstile && turnstileWidgetId !== null) 
 
 function renderTurnstile() {
   const box = document.getElementById("turnstile_box");
+  if (loginStep === "otp") {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    turnstileWidgetId = null;
+    return;
+  }
   if (!loginOptions.turnstile_required || !loginOptions.turnstile_site_key || !window.turnstile) {
     box.classList.add("hidden");
     box.innerHTML = "";
@@ -452,7 +462,28 @@ function resetLoginStep() {
   loginStep = "password";
   otpChallengeToken = "";
   document.getElementById("otp_code").value = "";
+  document.getElementById("username").disabled = false;
+  document.getElementById("password").disabled = false;
+  document.getElementById("login_primary_actions").classList.remove("hidden");
+  document.getElementById("login_otp_actions").classList.add("hidden");
   updateOtpVisibility();
+  renderTurnstile();
+}
+
+function startOtpStep() {
+  loginStep = "otp";
+  document.getElementById("username").disabled = true;
+  document.getElementById("password").disabled = true;
+  document.getElementById("login_primary_actions").classList.add("hidden");
+  document.getElementById("login_otp_actions").classList.remove("hidden");
+  updateOtpVisibility();
+  renderTurnstile();
+}
+
+function cancelOtpLogin() {
+  resetLoginStep();
+  setStatus("status", "OTP step cancelled.", true);
+  document.getElementById("password").focus();
 }
 
 function clearLoginFieldErrors() {
@@ -550,37 +581,31 @@ function applySessionInfo(data) {
 async function login() {
   try {
     clearLoginFieldErrors();
+    resetLoginStep();
     const username = document.getElementById("username").value.trim();
     const password = document.getElementById("password").value;
     if (!username || !password) {
       setStatus("status", "Username and password are required.", false);
       return;
     }
-    const otpValue = document.getElementById("otp_code").value.trim();
-    if (loginStep === "otp" && !otpValue) {
-      document.getElementById("otp_code").classList.add("input-error");
-      setStatus("status", "TOTP code is required.", false);
-      return;
-    }
     const turnstileToken = getTurnstileToken();
-    if (loginStep === "password" && loginOptions.turnstile_required && !turnstileToken) {
+    if (loginOptions.turnstile_required && !turnstileToken) {
       setStatus("status", "Please complete Turnstile verification.", false);
       return;
     }
 
-    setStatus("status", loginStep === "otp" ? "Verifying OTP..." : "Verifying credentials...");
+    setStatus("status", "Verifying credentials...");
     const payload = {
       username: username,
       password: password,
-      otp_code: loginStep === "otp" ? otpValue : "",
-      otp_challenge_token: otpChallengeToken,
-      turnstile_token: loginStep === "password" ? turnstileToken : ""
+      otp_code: "",
+      otp_challenge_token: "",
+      turnstile_token: turnstileToken
     };
     const loginResp = await api("/admin/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (loginResp && loginResp.otp_required) {
-      loginStep = "otp";
       otpChallengeToken = String(loginResp.otp_challenge_token || "");
-      updateOtpVisibility();
+      startOtpStep();
       document.getElementById("otp_code").focus();
       setStatus("status", "Credentials verified. Enter your TOTP code.", true);
       return;
@@ -594,9 +619,43 @@ async function login() {
     await loadAll();
   } catch (err) {
     setStatus("status", err.message, false);
+    resetTurnstile();
+  }
+}
+
+async function confirmOtpLogin() {
+  try {
+    clearLoginFieldErrors();
     if (loginStep !== "otp") {
-      resetTurnstile();
+      setStatus("status", "Start with username and password.", false);
+      return;
     }
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+    const otpValue = document.getElementById("otp_code").value.trim();
+    if (!otpValue) {
+      document.getElementById("otp_code").classList.add("input-error");
+      setStatus("status", "TOTP code is required.", false);
+      return;
+    }
+    setStatus("status", "Verifying OTP...");
+    const payload = {
+      username: username,
+      password: password,
+      otp_code: otpValue,
+      otp_challenge_token: otpChallengeToken,
+      turnstile_token: ""
+    };
+    await api("/admin/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const session = await api("/admin/api/session");
+    document.getElementById("boot_screen").classList.add("hidden");
+    document.getElementById("login_screen").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    applySessionInfo(session);
+    setStatus("status", "Logged in.");
+    await loadAll();
+  } catch (err) {
+    setStatus("status", err.message, false);
   }
 }
 
@@ -994,6 +1053,8 @@ async function generatePbsPreview() {
 
 function bindEvents() {
   document.getElementById("btn_login").addEventListener("click", login);
+  document.getElementById("btn_login_otp_confirm").addEventListener("click", confirmOtpLogin);
+  document.getElementById("btn_login_otp_cancel").addEventListener("click", cancelOtpLogin);
   document.getElementById("btn_logout").addEventListener("click", logout);
   document.getElementById("btn_refresh_all").addEventListener("click", loadAll);
   document.getElementById("btn_licenses_refresh").addEventListener("click", () => loadLicenses().catch((err) => setStatus("app_status", err.message, false)));
@@ -1024,7 +1085,7 @@ function bindEvents() {
   document.getElementById("password").addEventListener("input", resetLoginStep);
   document.getElementById("search").addEventListener("input", debounceLoadLicenses);
   document.getElementById("password").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
-  document.getElementById("otp_code").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
+  document.getElementById("otp_code").addEventListener("keydown", (event) => { if (event.key === "Enter") confirmOtpLogin(); });
   document.getElementById("otp_code").addEventListener("input", () => document.getElementById("otp_code").classList.remove("input-error"));
 }
 
