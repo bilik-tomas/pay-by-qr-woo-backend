@@ -581,7 +581,6 @@ function applySessionInfo(data) {
 async function login() {
   try {
     clearLoginFieldErrors();
-    resetLoginStep();
     const username = document.getElementById("username").value.trim();
     const password = document.getElementById("password").value;
     if (!username || !password) {
@@ -1081,7 +1080,7 @@ function bindEvents() {
     showTab(requested, false);
   });
 
-  document.getElementById("username").addEventListener("input", () => { resetLoginStep(); refreshLoginOptions(); });
+  document.getElementById("username").addEventListener("input", resetLoginStep);
   document.getElementById("password").addEventListener("input", resetLoginStep);
   document.getElementById("search").addEventListener("input", debounceLoadLicenses);
   document.getElementById("password").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
