@@ -380,7 +380,7 @@ ADMIN_HTML = """<!doctype html>
           <div class="span-6">
             <h3>License Rate Stats</h3>
             <table>
-              <thead><tr><th>License</th><th>Total calls</th><th>Current minute</th></tr></thead>
+              <thead><tr><th>License</th><th>Total calls</th><th>Current minute</th><th>Current hour</th></tr></thead>
               <tbody id="license_stats_rows"></tbody>
             </table>
           </div>
@@ -893,10 +893,11 @@ async function loadLicenseStats() {
   rows.innerHTML = "";
   for (const item of data.items || []) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="mono"></td><td></td><td></td>`;
+    tr.innerHTML = `<td class="mono"></td><td></td><td></td><td></td>`;
     tr.children[0].textContent = item.license_key;
     tr.children[1].textContent = String(item.total_calls);
     tr.children[2].textContent = String(item.current_minute_calls);
+    tr.children[3].textContent = String(item.current_hour_calls || 0);
     rows.appendChild(tr);
   }
 }
@@ -904,8 +905,8 @@ async function loadLicenseStats() {
 async function exportLicenseStatsCsv() {
   try {
     const data = await api("/admin/api/security/license-stats");
-    const rows = (data.items || []).map((item) => [item.license_key, item.total_calls, item.current_minute_calls]);
-    downloadCsv("license-rate-stats.csv", ["license_key", "total_calls", "current_minute_calls"], rows);
+    const rows = (data.items || []).map((item) => [item.license_key, item.total_calls, item.current_minute_calls, item.current_hour_calls || 0]);
+    downloadCsv("license-rate-stats.csv", ["license_key", "total_calls", "current_minute_calls", "current_hour_calls"], rows);
   } catch (err) {
     setStatus("app_status", err.message, false);
   }

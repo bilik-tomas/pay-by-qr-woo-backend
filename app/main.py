@@ -340,8 +340,14 @@ def _enforce_license_qr_limits(request: Request, db: Session) -> None:
     if minute_hits == 1:
         redis_client.expire(minute_counter_key, 70)
 
+    hour_counter_key = f"stats:license:hour:{license_key}:{int(time.time() // 3600)}"
+    hour_hits = int(redis_client.incr(hour_counter_key))
+    if hour_hits == 1:
+        redis_client.expire(hour_counter_key, 3700)
+
     redis_client.hincrby(f"stats:license:{license_key}", "total_calls", 1)
     redis_client.hset(f"stats:license:{license_key}", "current_minute_calls", str(minute_hits))
+    redis_client.hset(f"stats:license:{license_key}", "current_hour_calls", str(hour_hits))
     redis_client.hset(f"stats:license:{license_key}", "updated_at", str(int(time.time())))
     redis_client.sadd("stats:license:index", license_key)
     redis_client.hset(f"stats:license:{license_key}", "daily_qr_calls", str(daily_hits))
@@ -472,6 +478,11 @@ async def capture_body(request: Request, call_next):
                 redis_client.expire(per_key, 70)
             redis_client.hincrby(f"stats:license:{license_key}", "total_calls", 1)
             redis_client.hset(f"stats:license:{license_key}", "current_minute_calls", str(lic_hits))
+            hour_key = f"rl:license:hour:{license_key}:{int(time.time() // 3600)}"
+            hour_hits = int(redis_client.incr(hour_key))
+            if hour_hits == 1:
+                redis_client.expire(hour_key, 3700)
+            redis_client.hset(f"stats:license:{license_key}", "current_hour_calls", str(hour_hits))
             redis_client.hset(f"stats:license:{license_key}", "updated_at", str(int(time.time())))
             redis_client.sadd("stats:license:index", license_key)
             if lic_hits > settings.rate_limit_per_license_per_minute:
@@ -805,6 +816,7 @@ def admin_api_security_license_stats(
                 license_key=license_key,
                 total_calls=int(stats.get("total_calls", "0") or 0),
                 current_minute_calls=int(stats.get("current_minute_calls", "0") or 0),
+                current_hour_calls=int(stats.get("current_hour_calls", "0") or 0),
             )
         )
     return AdminLicenseRateStatsResponse(items=items)

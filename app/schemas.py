@@ -235,6 +235,7 @@ class AdminLicenseRateStatsItem(BaseModel):
     license_key: str
     total_calls: int
     current_minute_calls: int
+    current_hour_calls: int
 
 
 class AdminLicenseRateStatsResponse(BaseModel):
