@@ -141,8 +141,8 @@ def payload_to_card_png_bytes(
     scale = safe_text_size / 20.0
 
     subtitle_top = max(10, int(round(output_size * 0.05)))
-    subtitle_to_qr_gap = max(8, int(round(output_size * 0.03)))
-    qr_to_brand_gap = max(8, int(round(output_size * 0.03)))
+    subtitle_to_qr_gap = max(8, int(round(output_size * 0.03))) + 3
+    qr_to_brand_gap = max(8, int(round(output_size * 0.03))) + 2
     brand_to_bottom_gap = max(10, int(round(output_size * 0.05)))
     card_w = output_size
 
