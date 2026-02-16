@@ -110,50 +110,74 @@ def payload_to_framed_png_base64(payload: str, label: str = "PAY by square", qr_
     return base64.b64encode(output.getvalue()).decode("ascii")
 
 
-def payload_to_card_png_bytes(payload: str, qr_size: int = 460) -> bytes:
+def payload_to_card_png_bytes(
+    payload: str,
+    qr_size: int = 460,
+    text_size: int = 20,
+    subtitle_text: str = "Naskenujte kod vo svojej bankovej aplikacii",
+    brand_text: str = "PAY by square",
+) -> bytes:
     qr_img = _resize_qr_nearest(_build_qr_image(payload, border=4, box_size=10), max(260, qr_size))
     qr_w, qr_h = qr_img.size
 
-    pad_x = 42
-    pad_y = 34
-    title_h = 58
-    subtitle_h = 30
+    safe_text_size = max(12, min(42, int(text_size)))
+    scale = safe_text_size / 20.0
+
+    pad_x = max(28, int(round(42 * scale)))
+    pad_y = max(24, int(round(34 * scale)))
+    subtitle_top = max(12, int(round(16 * scale)))
+    subtitle_to_qr_gap = max(12, int(round(16 * scale)))
+    qr_to_brand_gap = max(12, int(round(14 * scale)))
+    brand_to_bottom_gap = max(14, int(round(18 * scale)))
+
     card_w = qr_w + (pad_x * 2)
-    card_h = qr_h + (pad_y * 2) + title_h + subtitle_h
 
     # Card background.
+    try:
+        brand_font = ImageFont.truetype("DejaVuSans-Bold.ttf", max(22, int(round(40 * scale))))
+        sub_font = ImageFont.truetype("DejaVuSans.ttf", max(12, int(round(20 * scale))))
+    except Exception:
+        brand_font = ImageFont.load_default()
+        sub_font = ImageFont.load_default()
+
+    # Probe text sizes to compute dynamic header height.
+    probe = Image.new("RGB", (1, 1), (255, 255, 255))
+    probe_draw = ImageDraw.Draw(probe)
+    subtitle = (subtitle_text or "").strip() or "Naskenujte kod vo svojej bankovej aplikacii"
+    brand = (brand_text or "").strip() or "PAY by square"
+    title_box = probe_draw.textbbox((0, 0), brand, font=brand_font)
+    subtitle_box = probe_draw.textbbox((0, 0), subtitle, font=sub_font)
+    title_w = title_box[2] - title_box[0]
+    title_h = title_box[3] - title_box[1]
+    subtitle_w = subtitle_box[2] - subtitle_box[0]
+    subtitle_h = subtitle_box[3] - subtitle_box[1]
+
+    qr_y = subtitle_top + subtitle_h + subtitle_to_qr_gap
+    brand_y = qr_y + qr_h + qr_to_brand_gap
+    card_h = brand_y + title_h + brand_to_bottom_gap
+
     canvas = Image.new("RGB", (card_w, card_h), (245, 248, 255))
     draw = ImageDraw.Draw(canvas)
 
     # Rounded card.
     draw.rounded_rectangle(
         [4, 4, card_w - 5, card_h - 5],
-        radius=26,
+        radius=max(16, int(round(26 * scale))),
         fill=(255, 255, 255),
         outline=(203, 216, 241),
         width=2,
     )
 
-    # Header texts.
-    try:
-        title_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 40)
-        sub_font = ImageFont.truetype("DejaVuSans.ttf", 20)
-    except Exception:
-        title_font = ImageFont.load_default()
-        sub_font = ImageFont.load_default()
-
-    title = "PAY by square"
-    subtitle = "Naskenujte kod vo svojej bankovej aplikacii"
-    title_box = draw.textbbox((0, 0), title, font=title_font)
-    subtitle_box = draw.textbbox((0, 0), subtitle, font=sub_font)
-    title_w = title_box[2] - title_box[0]
-    subtitle_w = subtitle_box[2] - subtitle_box[0]
-    draw.text(((card_w - title_w) // 2, 16), title, fill=(21, 47, 97), font=title_font)
-    draw.text(((card_w - subtitle_w) // 2, 62), subtitle, fill=(84, 102, 140), font=sub_font)
+    draw.text(
+        ((card_w - subtitle_w) // 2, subtitle_top),
+        subtitle,
+        fill=(84, 102, 140),
+        font=sub_font,
+    )
+    draw.text(((card_w - title_w) // 2, brand_y), brand, fill=(21, 47, 97), font=brand_font)
 
     # QR zone.
     qr_x = (card_w - qr_w) // 2
-    qr_y = title_h + subtitle_h + pad_y // 2
     draw.rounded_rectangle(
         [qr_x - 8, qr_y - 8, qr_x + qr_w + 8, qr_y + qr_h + 8],
         radius=16,
@@ -173,11 +197,20 @@ def payload_to_png_bytes(
     framed: bool = False,
     label: str = "PAY by square",
     size: int = 420,
+    text_size: int = 20,
     style: str = "plain",
+    subtitle_text: str = "Naskenujte kod vo svojej bankovej aplikacii",
+    brand_text: str = "PAY by square",
 ) -> bytes:
     style = (style or "plain").strip().lower()
     if style == "card":
-        return payload_to_card_png_bytes(payload, qr_size=size)
+        return payload_to_card_png_bytes(
+            payload,
+            qr_size=size,
+            text_size=text_size,
+            subtitle_text=subtitle_text,
+            brand_text=brand_text,
+        )
     if framed:
         return base64.b64decode(payload_to_framed_png_base64(payload, label=label, qr_size=size))
     plain_qr = _resize_qr_nearest(_build_qr_image(payload, border=4, box_size=10), max(220, size))

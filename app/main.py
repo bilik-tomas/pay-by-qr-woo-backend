@@ -875,14 +875,28 @@ def pbs_generate_png(
     payload: PBSGenerateRequest,
     framed: bool = False,
     size: int = 420,
+    text_size: int = 20,
     style: str = "plain",
+    subtitle: str = "Naskenujte kod vo svojej bankovej aplikacii",
+    brand: str = "PAY by square",
     auth: AuthContext = Depends(_auth_dep),
 ) -> Response:
     del auth
     try:
         pbs_payload = generate_payload(payload)
         safe_size = max(220, min(900, int(size)))
-        png_bytes = payload_to_png_bytes(pbs_payload, framed=framed, size=safe_size, style=style)
+        safe_text_size = max(12, min(42, int(text_size)))
+        safe_subtitle = (subtitle or "").strip()[:120]
+        safe_brand = (brand or "").strip()[:60]
+        png_bytes = payload_to_png_bytes(
+            pbs_payload,
+            framed=framed,
+            size=safe_size,
+            style=style,
+            text_size=safe_text_size,
+            subtitle_text=safe_subtitle,
+            brand_text=safe_brand,
+        )
         return Response(
             content=png_bytes,
             media_type="image/png",
