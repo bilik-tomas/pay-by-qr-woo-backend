@@ -232,3 +232,8 @@ class AdminLicenseRateStatsItem(BaseModel):
 
 class AdminLicenseRateStatsResponse(BaseModel):
     items: list[AdminLicenseRateStatsItem]
+
+
+class AdminPbsPreviewResponse(BaseModel):
+    payload: str
+    qr_data_url: str

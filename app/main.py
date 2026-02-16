@@ -60,6 +60,7 @@ from .schemas import (
     AdminLicenseUpsertResponse,
     AdminLicenseRateStatsItem,
     AdminLicenseRateStatsResponse,
+    AdminPbsPreviewResponse,
     AdminTwoFaConfirmRequest,
     AdminTwoFaDisableRequest,
     AdminTwoFaStartResponse,
@@ -847,6 +848,38 @@ def admin_api_user_delete(
     db.delete(row)
     db.commit()
     return {"ok": True}
+
+
+@app.post("/admin/api/preview/pbs", response_model=AdminPbsPreviewResponse)
+def admin_api_preview_pbs(
+    payload: PBSGenerateRequest,
+    style: str = "card",
+    size: int = 420,
+    text_size: int = 20,
+    _=Depends(admin_session_dep),
+) -> AdminPbsPreviewResponse:
+    try:
+        pbs_payload = generate_payload(payload)
+        safe_style = (style or "card").strip().lower()
+        if safe_style not in {"plain", "card"}:
+            safe_style = "card"
+        safe_size = max(220, min(900, int(size)))
+        safe_text_size = max(12, min(42, int(text_size)))
+        png_bytes = payload_to_png_bytes(
+            pbs_payload,
+            framed=False,
+            size=safe_size,
+            style=safe_style,
+            text_size=safe_text_size,
+            subtitle_text="Naskenujte kod vo svojej bankovej aplikacii",
+            brand_text="PAY by square",
+        )
+        return AdminPbsPreviewResponse(
+            payload=pbs_payload,
+            qr_data_url="data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii"),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"preview generation failed: {exc}") from exc
 
 
 @app.post("/v1/pbs/generate", response_model=PBSGenerateResponse)

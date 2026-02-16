@@ -243,6 +243,87 @@ ADMIN_HTML = """<!doctype html>
         </div>
       </div>
 
+      <div class="card span-12">
+        <h2>QR Preview</h2>
+        <p class="sub">Generate a test Pay by Square QR without creating WooCommerce order.</p>
+        <div class="grid">
+          <div class="span-6">
+            <div class="row">
+              <div class="field">
+                <label for="preview_order_id">Order ID</label>
+                <input id="preview_order_id" type="text" value="TEST-001">
+              </div>
+              <div class="field">
+                <label for="preview_amount">Amount</label>
+                <input id="preview_amount" type="number" step="0.01" min="0.01" value="21.50">
+              </div>
+              <div class="field">
+                <label for="preview_currency">Currency</label>
+                <input id="preview_currency" type="text" value="EUR">
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="preview_iban">IBAN</label>
+                <input id="preview_iban" class="wide" type="text" value="SK1583300000002503435769">
+              </div>
+              <div class="field">
+                <label for="preview_bic">BIC</label>
+                <input id="preview_bic" type="text" value="FIOZSKBAXXX">
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="preview_vs">Variable symbol</label>
+                <input id="preview_vs" type="text" value="1001">
+              </div>
+              <div class="field">
+                <label for="preview_due_date">Due date</label>
+                <input id="preview_due_date" type="date">
+              </div>
+              <div class="field">
+                <label for="preview_style">Style</label>
+                <select id="preview_style">
+                  <option value="card">card</option>
+                  <option value="plain">plain</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div class="field">
+                <label for="preview_size">QR size (px)</label>
+                <input id="preview_size" type="number" min="220" max="900" step="1" value="420">
+              </div>
+              <div class="field">
+                <label for="preview_text_size">Card text size (px)</label>
+                <input id="preview_text_size" type="number" min="12" max="42" step="1" value="20">
+              </div>
+            </div>
+            <div class="field">
+              <label for="preview_recipient">Recipient name</label>
+              <input id="preview_recipient" class="wide" type="text" value="ZEMPRES, s.r.o.">
+            </div>
+            <div class="field">
+              <label for="preview_message">Message</label>
+              <input id="preview_message" class="wide" type="text" value="Test preview payment">
+            </div>
+            <div class="row">
+              <button id="btn_preview_generate" type="button">Generate Preview</button>
+            </div>
+            <div id="preview_status" class="status"></div>
+          </div>
+          <div class="span-6">
+            <div class="qr-wrap" style="width: 100%; max-width: 520px;">
+              <img id="preview_qr_img" alt="QR preview" style="width: 100%; height: auto; max-width: 500px;">
+            </div>
+            <div class="field" style="margin-top: 12px;">
+              <label for="preview_payload">Generated payload</label>
+              <textarea id="preview_payload" rows="7" style="width: 100%; border: 1px solid #b7c4de; border-radius: 8px; padding: 10px; font-family: Consolas, monospace; font-size: 12px;"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div id="superadmin_security" class="card span-12 hidden">
         <h2>Security Dashboard</h2>
         <p class="sub" id="turnstile_status_text"></p>
@@ -715,6 +796,37 @@ async function loadAll() {
   } catch (err) { setStatus("app_status", err.message, false); }
 }
 
+async function generatePbsPreview() {
+  try {
+    setStatus("preview_status", "Generating preview...");
+    const payload = {
+      order_id: document.getElementById("preview_order_id").value.trim() || "TEST-001",
+      amount: document.getElementById("preview_amount").value || "1.00",
+      currency: document.getElementById("preview_currency").value.trim() || "EUR",
+      iban: document.getElementById("preview_iban").value.trim(),
+      bic: document.getElementById("preview_bic").value.trim(),
+      recipient_name: document.getElementById("preview_recipient").value.trim(),
+      variable_symbol: document.getElementById("preview_vs").value.trim(),
+      message: document.getElementById("preview_message").value.trim(),
+      due_date: document.getElementById("preview_due_date").value || null
+    };
+    const style = document.getElementById("preview_style").value;
+    const size = document.getElementById("preview_size").value || "420";
+    const textSize = document.getElementById("preview_text_size").value || "20";
+    const query = "?style=" + encodeURIComponent(style) + "&size=" + encodeURIComponent(size) + "&text_size=" + encodeURIComponent(textSize);
+    const data = await api("/admin/api/preview/pbs" + query, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    document.getElementById("preview_qr_img").src = data.qr_data_url || "";
+    document.getElementById("preview_payload").value = data.payload || "";
+    setStatus("preview_status", "Preview generated.");
+  } catch (err) {
+    setStatus("preview_status", err.message, false);
+  }
+}
+
 function bindEvents() {
   document.getElementById("btn_login").addEventListener("click", login);
   document.getElementById("btn_logout").addEventListener("click", logout);
@@ -732,6 +844,7 @@ function bindEvents() {
   document.getElementById("btn_export_blocks_csv").addEventListener("click", exportBlocksCsv);
   document.getElementById("btn_export_license_stats_csv").addEventListener("click", exportLicenseStatsCsv);
   document.getElementById("btn_export_audit_csv").addEventListener("click", exportAuditCsv);
+  document.getElementById("btn_preview_generate").addEventListener("click", generatePbsPreview);
 
   document.getElementById("username").addEventListener("input", refreshLoginOptions);
   document.getElementById("search").addEventListener("input", debounceLoadLicenses);
