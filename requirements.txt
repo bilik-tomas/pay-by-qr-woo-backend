@@ -10,4 +10,5 @@ pay-by-square==0.2.0
 qrcode==7.4.2
 itsdangerous==2.2.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 pyotp==2.9.0
