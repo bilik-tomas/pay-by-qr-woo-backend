@@ -76,6 +76,9 @@ ADMIN_HTML = """<!doctype html>
 
     .qr-wrap { border: 1px dashed #bcc9e4; border-radius: 10px; padding: 10px; width: 240px; background: #fbfdff; }
     .qr-wrap img { width: 220px; height: 220px; object-fit: contain; display: block; margin: 0 auto; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tab-btn { background: #edf2ff; color: #1f3d72; border: 1px solid #c9d7f6; }
+    .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
@@ -123,7 +126,16 @@ ADMIN_HTML = """<!doctype html>
         <div id="app_status" class="status"></div>
       </div>
 
-      <div class="card span-8">
+      <div class="card span-12">
+        <div class="tabs">
+          <button id="tab_btn_licenses" type="button" class="tab-btn active">Licenses</button>
+          <button id="tab_btn_admin" type="button" class="tab-btn">Admin Accounts</button>
+          <button id="tab_btn_preview" type="button" class="tab-btn">QR Preview</button>
+          <button id="tab_btn_security" type="button" class="tab-btn hidden">Security</button>
+        </div>
+      </div>
+
+      <div class="card span-8 tab-section tab-licenses">
         <h2>Licenses</h2>
         <p class="sub">Edit or delete existing licenses.</p>
         <div class="toolbar">
@@ -138,7 +150,7 @@ ADMIN_HTML = """<!doctype html>
         </table>
       </div>
 
-      <div class="card span-4">
+      <div class="card span-4 tab-section tab-licenses">
         <h2>License Form</h2>
         <div class="field">
           <label for="license_key">License key</label>
@@ -178,7 +190,7 @@ ADMIN_HTML = """<!doctype html>
         </div>
       </div>
 
-      <div class="card span-6">
+      <div class="card span-6 tab-section tab-admin">
         <h2>Admin Accounts</h2>
         <p class="sub">2FA can be enabled only by the account owner.</p>
         <div class="row">
@@ -203,7 +215,7 @@ ADMIN_HTML = """<!doctype html>
         </table>
       </div>
 
-      <div class="card span-6">
+      <div class="card span-6 tab-section tab-admin">
         <h2>My Security</h2>
         <p class="sub">Scan QR in authenticator app and confirm code.</p>
         <div id="my_security_state" class="hint">Loading...</div>
@@ -243,7 +255,7 @@ ADMIN_HTML = """<!doctype html>
         </div>
       </div>
 
-      <div class="card span-12">
+      <div class="card span-12 tab-section tab-preview">
         <h2>QR Preview</h2>
         <p class="sub">Generate a test Pay by Square QR without creating WooCommerce order.</p>
         <div class="grid">
@@ -324,7 +336,7 @@ ADMIN_HTML = """<!doctype html>
         </div>
       </div>
 
-      <div id="superadmin_security" class="card span-12 hidden">
+      <div id="superadmin_security" class="card span-12 tab-section tab-security hidden">
         <h2>Security Dashboard</h2>
         <p class="sub" id="turnstile_status_text"></p>
         <div class="row">
@@ -359,6 +371,7 @@ let searchTimer = null;
 let sessionUser = "";
 let isSuperadmin = false;
 let myTwoFaEnabled = false;
+let activeTab = "licenses";
 
 function setStatus(elId, msg, ok=true) {
   const el = document.getElementById(elId);
@@ -398,6 +411,16 @@ function updateTwoFaUiState() {
   document.getElementById("twofa_start_area").classList.toggle("hidden", myTwoFaEnabled);
   document.getElementById("twofa_disable_area").classList.toggle("hidden", !myTwoFaEnabled);
   if (myTwoFaEnabled) document.getElementById("twofa_setup").classList.add("hidden");
+}
+
+function showTab(tabName) {
+  activeTab = tabName;
+  for (const btn of document.querySelectorAll(".tab-btn")) btn.classList.remove("active");
+  const activeBtn = document.getElementById("tab_btn_" + tabName);
+  if (activeBtn) activeBtn.classList.add("active");
+  for (const panel of document.querySelectorAll(".tab-section")) {
+    panel.classList.toggle("hidden", !panel.classList.contains("tab-" + tabName));
+  }
 }
 
 function csvEscape(value) {
@@ -442,7 +465,12 @@ function applySessionInfo(data) {
   myTwoFaEnabled = !!data.twofa_enabled;
   document.getElementById("session_user").textContent = "Logged in as: " + sessionUser;
   document.getElementById("superadmin_banner").classList.toggle("hidden", !isSuperadmin);
-  document.getElementById("superadmin_security").classList.toggle("hidden", !isSuperadmin);
+  document.getElementById("tab_btn_security").classList.toggle("hidden", !isSuperadmin);
+  if (!isSuperadmin && activeTab === "security") {
+    showTab("licenses");
+  } else {
+    showTab(activeTab);
+  }
   document.getElementById("turnstile_status_text").textContent = isSuperadmin
     ? (loginOptions.turnstile_required
       ? "Cloudflare Turnstile is enabled in env configuration."
@@ -845,6 +873,10 @@ function bindEvents() {
   document.getElementById("btn_export_license_stats_csv").addEventListener("click", exportLicenseStatsCsv);
   document.getElementById("btn_export_audit_csv").addEventListener("click", exportAuditCsv);
   document.getElementById("btn_preview_generate").addEventListener("click", generatePbsPreview);
+  document.getElementById("tab_btn_licenses").addEventListener("click", () => showTab("licenses"));
+  document.getElementById("tab_btn_admin").addEventListener("click", () => showTab("admin"));
+  document.getElementById("tab_btn_preview").addEventListener("click", () => showTab("preview"));
+  document.getElementById("tab_btn_security").addEventListener("click", () => showTab("security"));
 
   document.getElementById("username").addEventListener("input", refreshLoginOptions);
   document.getElementById("search").addEventListener("input", debounceLoadLicenses);
@@ -854,6 +886,7 @@ function bindEvents() {
 
 function initAdminUi() {
   bindEvents();
+  showTab("licenses");
   checkSession();
 }
 
