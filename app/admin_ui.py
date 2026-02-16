@@ -24,6 +24,7 @@ ADMIN_HTML = """<!doctype html>
     body.booting #app { display: none !important; }
 
     .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    #boot_screen { position: fixed; inset: 0; z-index: 9999; background: radial-gradient(circle at 10% 0%, #e7eefc 0, var(--bg) 48%); }
     .auth-card { width: 100%; max-width: 460px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 24px; }
     .auth-card h1 { margin: 0 0 8px; font-size: 26px; }
     .auth-card p { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
@@ -553,6 +554,7 @@ async function login() {
     };
     await api("/admin/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const session = await api("/admin/api/session");
+    document.getElementById("boot_screen").classList.add("hidden");
     document.getElementById("login_screen").classList.add("hidden");
     document.getElementById("app").classList.remove("hidden");
     applySessionInfo(session);
@@ -583,6 +585,7 @@ async function checkSession() {
     document.getElementById("login_screen").classList.remove("hidden");
     refreshLoginOptions().catch(() => {});
   } finally {
+    document.getElementById("boot_screen").classList.add("hidden");
     document.body.classList.remove("booting");
     if (bootRevealTimer) { clearTimeout(bootRevealTimer); bootRevealTimer = null; }
     if (!hasSession) {
