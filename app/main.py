@@ -32,6 +32,7 @@ from .admin_auth import (
 from .by_square import (
     generate_payload,
     payload_to_framed_png_base64,
+    payload_to_png_bytes,
     payload_to_png_base64,
     payload_to_svg,
 )
@@ -864,6 +865,25 @@ def pbs_generate(
             qr_svg=qr_svg,
             qr_png_base64=qr_png_base64,
             qr_png_framed_base64=qr_png_framed_base64,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"generation failed: {exc}") from exc
+
+
+@app.post("/v1/pbs/generate-png")
+def pbs_generate_png(
+    payload: PBSGenerateRequest,
+    framed: bool = False,
+    auth: AuthContext = Depends(_auth_dep),
+) -> Response:
+    del auth
+    try:
+        pbs_payload = generate_payload(payload)
+        png_bytes = payload_to_png_bytes(pbs_payload, framed=framed)
+        return Response(
+            content=png_bytes,
+            media_type="image/png",
+            headers={"Cache-Control": "no-store, max-age=0"},
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"generation failed: {exc}") from exc

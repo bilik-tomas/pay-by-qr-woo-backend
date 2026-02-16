@@ -96,3 +96,9 @@ def payload_to_framed_png_base64(payload: str, label: str = "PAY by square") -> 
     output = BytesIO()
     canvas.save(output, format="PNG")
     return base64.b64encode(output.getvalue()).decode("ascii")
+
+
+def payload_to_png_bytes(payload: str, framed: bool = False, label: str = "PAY by square") -> bytes:
+    if framed:
+        return base64.b64decode(payload_to_framed_png_base64(payload, label=label))
+    return base64.b64decode(payload_to_png_base64(payload))
