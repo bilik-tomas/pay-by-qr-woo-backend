@@ -85,3 +85,30 @@ class AuditLog(Base):
         nullable=False,
         default=utcnow,
     )
+
+
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+    __table_args__ = (
+        Index("ix_admin_users_username", "username", unique=True),
+        Index("ix_admin_users_is_active", "is_active"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_superadmin: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    twofa_enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    twofa_secret: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+    )

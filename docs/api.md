@@ -169,10 +169,41 @@ Header:
 - `X-Admin-Token`
 
 ## GET /admin
-Simple browser UI for license management.
-- paste `X-Admin-Token`
-- list licenses
-- create/edit license records
+Browser UI with login + session cookie auth.
+
+## POST /admin/api/login
+Login for admin UI.
+```json
+{
+  "username": "admin",
+  "password": "secret",
+  "otp_code": "123456"
+}
+```
+
+## GET /admin/api/session
+Returns active admin username from session cookie.
+
+## POST /admin/api/logout
+Ends admin session.
+
+## GET /admin/api/license/list
+Session-authenticated variant of license list for UI.
+
+## POST /admin/api/license/upsert
+Session-authenticated variant of license upsert for UI.
+
+## GET /admin/api/user/list
+Lists admin users (session auth).
+
+## POST /admin/api/user/upsert
+Creates/updates admin user account.
+- supports active/inactive
+- supports superadmin flag
+- supports optional TOTP 2FA (`twofa_enabled`, `twofa_secret`)
+
+## POST /admin/api/user/delete
+Deletes admin user account (superadmin only, cannot delete current user).
 
 ## Error Codes
 - `401`: invalid/missing auth, timestamp expired, nonce replay, invalid signature

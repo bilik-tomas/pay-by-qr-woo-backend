@@ -48,7 +48,23 @@ curl -s http://127.0.0.1:8080/health
 - `POST /v1/admin/client/upsert` (X-Admin-Token required)
 - `POST /v1/admin/client/rotate-secret` (X-Admin-Token required)
 - `GET /v1/admin/audit/recent` (X-Admin-Token required)
-- `GET /admin` (web UI for license management)
+- `GET /admin` (web UI with login/session auth)
+
+## Admin Login Bootstrapping
+Set in `.env`:
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD_HASH` (bcrypt hash)
+- `ADMIN_SESSION_SECRET`
+
+At startup, backend ensures this admin user exists and is active.
+
+Generate bcrypt hash example:
+```bash
+python3 - <<'PY'
+from passlib.context import CryptContext
+print(CryptContext(schemes=["bcrypt"], deprecated="auto").hash("StrongPassword123!"))
+PY
+```
 
 ## Database Migration
 After containers are up, run:

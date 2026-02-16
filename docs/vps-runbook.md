@@ -24,6 +24,9 @@ APP_LOG_LEVEL=INFO
 API_PORT=8080
 API_SIGN_TTL_SECONDS=300
 ADMIN_TOKEN=<LONG_RANDOM_ADMIN_TOKEN>
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD_HASH=<BCRYPT_HASH>
+ADMIN_SESSION_SECRET=<LONG_RANDOM_SESSION_SECRET>
 API_CLIENTS=woo_prod:<LONG_RANDOM_SECRET>
 DB_DSN=postgresql+psycopg://pbs:<STRONG_DB_PASS>@db:5432/pbs
 REDIS_URL=redis://redis:6379/0
@@ -143,5 +146,9 @@ curl -X POST https://api.example.com/v1/admin/license/upsert \
 
 Admin web UI:
 - open `https://api.example.com/admin`
-- paste `X-Admin-Token`
+- login using `ADMIN_USERNAME` and matching password hash
 - manage licenses directly in browser
+
+2FA:
+- in UI, set `twofa_enabled=true` and provide `twofa_secret` (TOTP base32) for selected admin user
+- login then requires `otp_code`

@@ -4,18 +4,29 @@ import uuid
 
 import secrets
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+import pyotp
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
 from redis import Redis
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from .admin_ui import ADMIN_HTML
+from .admin_auth import (
+    SESSION_COOKIE,
+    admin_session_dep,
+    issue_session_cookie,
+    verify_password,
+    verify_totp,
+)
 from .by_square import generate_payload, payload_to_svg
 from .config import settings
 from .db import SessionLocal, get_db
-from .models import AuditLog, Client, License
+from .models import AdminUser, AuditLog, Client, License
 from .schemas import (
+    AdminLoginRequest,
+    AdminLoginResponse,
+    AdminSessionInfoResponse,
     AdminAuditLogItem,
     AdminAuditLogListResponse,
     AdminClientResponse,
@@ -25,6 +36,10 @@ from .schemas import (
     AdminLicenseListResponse,
     AdminLicenseUpsertRequest,
     AdminLicenseUpsertResponse,
+    AdminUserDeleteRequest,
+    AdminUserItem,
+    AdminUserListResponse,
+    AdminUserUpsertRequest,
     LicenseValidateRequest,
     LicenseValidateResponse,
     PBSGenerateRequest,
@@ -79,6 +94,32 @@ def _admin_token_dep(x_admin_token: str = Header(default="", alias="X-Admin-Toke
         raise HTTPException(status_code=401, detail="invalid admin token")
 
 
+def _bootstrap_admin_from_env() -> None:
+    username = settings.admin_username.strip()
+    password_hash = settings.admin_password_hash.strip()
+    if not username or not password_hash:
+        return
+    try:
+        with SessionLocal() as db:
+            row = db.scalar(select(AdminUser).where(AdminUser.username == username).limit(1))
+            if not row:
+                row = AdminUser(
+                    username=username,
+                    password_hash=password_hash,
+                    is_active=1,
+                    is_superadmin=1,
+                )
+            else:
+                row.password_hash = password_hash
+                row.is_active = 1
+                row.is_superadmin = 1
+            db.add(row)
+            db.commit()
+    except Exception:
+        # Migration may not be applied yet on first boot.
+        pass
+
+
 @app.get("/health")
 def health() -> dict:
     redis_ok = False
@@ -92,6 +133,131 @@ def health() -> dict:
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page() -> str:
     return ADMIN_HTML
+
+
+@app.on_event("startup")
+def startup_bootstrap_admin() -> None:
+    _bootstrap_admin_from_env()
+
+
+@app.post("/admin/api/login", response_model=AdminLoginResponse)
+def admin_api_login(payload: AdminLoginRequest, response: Response, db: Session = Depends(get_db)) -> AdminLoginResponse:
+    row = db.scalar(select(AdminUser).where(AdminUser.username == payload.username).limit(1))
+    if not row or not row.is_active:
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    if not verify_password(payload.password, row.password_hash):
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    if row.twofa_enabled:
+        if not verify_totp(row.twofa_secret, payload.otp_code):
+            raise HTTPException(status_code=401, detail="invalid otp code")
+    token = issue_session_cookie(row.username)
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=12 * 60 * 60,
+    )
+    return AdminLoginResponse(ok=True, username=row.username)
+
+
+@app.post("/admin/api/logout")
+def admin_api_logout(response: Response) -> dict:
+    response.delete_cookie(SESSION_COOKIE)
+    return {"ok": True}
+
+
+@app.get("/admin/api/session", response_model=AdminSessionInfoResponse)
+def admin_api_session(session=Depends(admin_session_dep)) -> AdminSessionInfoResponse:
+    return AdminSessionInfoResponse(username=session.username)
+
+
+@app.get("/admin/api/license/list", response_model=AdminLicenseListResponse)
+def admin_api_license_list(
+    q: str = "",
+    limit: int = 100,
+    _=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> AdminLicenseListResponse:
+    return admin_license_list(q=q, limit=limit, _=None, db=db)
+
+
+@app.post("/admin/api/license/upsert", response_model=AdminLicenseUpsertResponse)
+def admin_api_license_upsert(
+    payload: AdminLicenseUpsertRequest,
+    _=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> AdminLicenseUpsertResponse:
+    return admin_license_upsert(payload=payload, _=None, db=db)
+
+
+@app.get("/admin/api/user/list", response_model=AdminUserListResponse)
+def admin_api_user_list(_=Depends(admin_session_dep), db: Session = Depends(get_db)) -> AdminUserListResponse:
+    rows = db.scalars(select(AdminUser).order_by(AdminUser.username.asc())).all()
+    return AdminUserListResponse(
+        items=[
+            AdminUserItem(
+                username=row.username,
+                is_active=bool(row.is_active),
+                is_superadmin=bool(row.is_superadmin),
+                twofa_enabled=bool(row.twofa_enabled),
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
+    )
+
+
+@app.post("/admin/api/user/upsert")
+def admin_api_user_upsert(
+    payload: AdminUserUpsertRequest,
+    session=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> dict:
+    current = db.scalar(select(AdminUser).where(AdminUser.username == session.username).limit(1))
+    if not current or not current.is_superadmin:
+        raise HTTPException(status_code=403, detail="superadmin required")
+
+    row = db.scalar(select(AdminUser).where(AdminUser.username == payload.username).limit(1))
+    if not row:
+        if not payload.password:
+            raise HTTPException(status_code=400, detail="password required for new user")
+        row = AdminUser(username=payload.username, password_hash=settings.admin_password_hash or "")
+    if payload.password:
+        from .admin_auth import hash_password
+
+        row.password_hash = hash_password(payload.password)
+    row.is_active = 1 if payload.is_active else 0
+    row.is_superadmin = 1 if payload.is_superadmin else 0
+    row.twofa_enabled = 1 if payload.twofa_enabled else 0
+    if payload.twofa_enabled:
+        row.twofa_secret = payload.twofa_secret.strip() or pyotp.random_base32()
+    else:
+        row.twofa_secret = ""
+    db.add(row)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/admin/api/user/delete")
+def admin_api_user_delete(
+    payload: AdminUserDeleteRequest,
+    session=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> dict:
+    current = db.scalar(select(AdminUser).where(AdminUser.username == session.username).limit(1))
+    if not current or not current.is_superadmin:
+        raise HTTPException(status_code=403, detail="superadmin required")
+    if payload.username == session.username:
+        raise HTTPException(status_code=400, detail="cannot delete current user")
+    row = db.scalar(select(AdminUser).where(AdminUser.username == payload.username).limit(1))
+    if not row:
+        raise HTTPException(status_code=404, detail="user not found")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/v1/pbs/generate", response_model=PBSGenerateResponse)

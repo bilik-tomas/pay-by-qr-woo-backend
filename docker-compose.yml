@@ -32,4 +32,6 @@ services:
 
 volumes:
   pg_data:
+    name: pay-by-qr-woo-backend_pg_data
   redis_data:
+    name: pay-by-qr-woo-backend_redis_data

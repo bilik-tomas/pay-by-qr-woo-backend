@@ -122,3 +122,44 @@ class AdminAuditLogItem(BaseModel):
 
 class AdminAuditLogListResponse(BaseModel):
     items: list[AdminAuditLogItem]
+
+
+class AdminLoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=255)
+    otp_code: str = Field(default="", max_length=12)
+
+
+class AdminLoginResponse(BaseModel):
+    ok: bool = True
+    username: str
+
+
+class AdminSessionInfoResponse(BaseModel):
+    username: str
+
+
+class AdminUserItem(BaseModel):
+    username: str
+    is_active: bool
+    is_superadmin: bool
+    twofa_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminUserListResponse(BaseModel):
+    items: list[AdminUserItem]
+
+
+class AdminUserUpsertRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(default="", max_length=255)
+    is_active: bool = True
+    is_superadmin: bool = False
+    twofa_enabled: bool = False
+    twofa_secret: str = Field(default="", max_length=64)
+
+
+class AdminUserDeleteRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)

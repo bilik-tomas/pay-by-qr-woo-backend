@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     api_hmac_algo: str = "sha256"
     api_clients: str = ""
     admin_token: str = ""
+    admin_username: str = ""
+    admin_password_hash: str = ""
+    admin_session_secret: str = ""
 
     db_dsn: str = "postgresql+psycopg://pbs:change_me@db:5432/pbs"
     redis_url: str = "redis://redis:6379/0"
