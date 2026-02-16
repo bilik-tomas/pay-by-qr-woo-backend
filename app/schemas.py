@@ -34,6 +34,7 @@ class PBSGenerateRequest(BaseModel):
 class PBSGenerateResponse(BaseModel):
     payload: str
     qr_svg: str
+    qr_png_base64: str = ""
     format: str = "pay_by_square"
 
 

@@ -1,3 +1,4 @@
+import base64
 from io import BytesIO
 
 import qrcode
@@ -42,3 +43,14 @@ def payload_to_svg(payload: str) -> str:
     output = BytesIO()
     img.save(output)
     return output.getvalue().decode("utf-8")
+
+
+def payload_to_png_base64(payload: str) -> str:
+    qr = qrcode.QRCode(border=2, box_size=8)
+    qr.add_data(payload)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    output = BytesIO()
+    img.save(output, format="PNG")
+    return base64.b64encode(output.getvalue()).decode("ascii")
