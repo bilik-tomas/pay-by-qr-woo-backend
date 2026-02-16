@@ -417,13 +417,33 @@ function updateTwoFaUiState() {
   if (myTwoFaEnabled) document.getElementById("twofa_setup").classList.add("hidden");
 }
 
-function showTab(tabName) {
+function tabFromHash() {
+  const raw = (window.location.hash || "").replace(/^#/, "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("tab=")) return decodeURIComponent(raw.slice(4));
+  return decodeURIComponent(raw);
+}
+
+function isTabAllowed(tabName) {
+  if (tabName === "licenses" || tabName === "admin" || tabName === "preview") return true;
+  if (tabName === "security" && isSuperadmin) return true;
+  return false;
+}
+
+function showTab(tabName, updateHash=true) {
+  if (!isTabAllowed(tabName)) tabName = "licenses";
   activeTab = tabName;
   for (const btn of document.querySelectorAll(".tab-btn")) btn.classList.remove("active");
   const activeBtn = document.getElementById("tab_btn_" + tabName);
   if (activeBtn) activeBtn.classList.add("active");
   for (const panel of document.querySelectorAll(".tab-section")) {
     panel.classList.toggle("hidden", !panel.classList.contains("tab-" + tabName));
+  }
+  if (updateHash) {
+    const target = "#tab=" + encodeURIComponent(tabName);
+    if (window.location.hash !== target) {
+      history.replaceState(null, "", target);
+    }
   }
 }
 
@@ -470,11 +490,8 @@ function applySessionInfo(data) {
   document.getElementById("session_user").textContent = "Logged in as: " + sessionUser;
   document.getElementById("superadmin_banner").classList.toggle("hidden", !isSuperadmin);
   document.getElementById("tab_btn_security").classList.toggle("hidden", !isSuperadmin);
-  if (!isSuperadmin && activeTab === "security") {
-    showTab("licenses");
-  } else {
-    showTab(activeTab);
-  }
+  const requestedTab = tabFromHash() || activeTab;
+  showTab(requestedTab);
   document.getElementById("turnstile_status_text").textContent = isSuperadmin
     ? (loginOptions.turnstile_required
       ? "Cloudflare Turnstile is enabled in env configuration."
@@ -895,6 +912,11 @@ function bindEvents() {
   document.getElementById("tab_btn_admin").addEventListener("click", () => showTab("admin"));
   document.getElementById("tab_btn_preview").addEventListener("click", () => showTab("preview"));
   document.getElementById("tab_btn_security").addEventListener("click", () => showTab("security"));
+  window.addEventListener("hashchange", () => {
+    const requested = tabFromHash();
+    if (!requested) return;
+    showTab(requested, false);
+  });
 
   document.getElementById("username").addEventListener("input", refreshLoginOptions);
   document.getElementById("search").addEventListener("input", debounceLoadLicenses);
@@ -904,7 +926,7 @@ function bindEvents() {
 
 function initAdminUi() {
   bindEvents();
-  showTab("licenses");
+  showTab(tabFromHash() || "licenses", false);
   checkSession();
 }
 
