@@ -174,3 +174,27 @@ class AdminUserDeleteRequest(BaseModel):
 
 class AdminLicenseDeleteRequest(BaseModel):
     license_key: str = Field(min_length=8, max_length=128)
+
+
+class AdminLicenseGenerateResponse(BaseModel):
+    license_key: str
+
+
+class AdminUserSetActiveRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    is_active: bool
+
+
+class AdminTwoFaStartResponse(BaseModel):
+    secret: str
+    otpauth_url: str
+    qr_svg: str
+
+
+class AdminTwoFaConfirmRequest(BaseModel):
+    otp_code: str = Field(min_length=6, max_length=12)
+
+
+class AdminTwoFaDisableRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=255)
+    otp_code: str = Field(default="", max_length=12)

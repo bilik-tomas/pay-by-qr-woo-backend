@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     admin_session_secret: str = ""
     admin_turnstile_site_key: str = ""
     admin_turnstile_secret_key: str = ""
+    rate_limit_per_minute: int = 60
 
     db_dsn: str = "postgresql+psycopg://pbs:change_me@db:5432/pbs"
     redis_url: str = "redis://redis:6379/0"

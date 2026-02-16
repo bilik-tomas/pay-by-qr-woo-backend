@@ -1,16 +1,20 @@
 from datetime import datetime, timezone
+from io import BytesIO
 import json
+import re
 import time
 import uuid
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
 import secrets
 
 import pyotp
+import qrcode
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from qrcode.image.svg import SvgImage
 from redis import Redis
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -40,11 +44,16 @@ from .schemas import (
     AdminLicenseItem,
     AdminLicenseListResponse,
     AdminLicenseDeleteRequest,
+    AdminLicenseGenerateResponse,
     AdminLicenseUpsertRequest,
     AdminLicenseUpsertResponse,
+    AdminTwoFaConfirmRequest,
+    AdminTwoFaDisableRequest,
+    AdminTwoFaStartResponse,
     AdminUserDeleteRequest,
     AdminUserItem,
     AdminUserListResponse,
+    AdminUserSetActiveRequest,
     AdminUserUpsertRequest,
     LicenseValidateRequest,
     LicenseValidateResponse,
@@ -57,8 +66,112 @@ app = FastAPI(title="Pay By QR Woo Backend", version="0.1.0")
 redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
 
 
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _rate_limit_key(request: Request) -> str:
+    # Limit by endpoint family and client IP.
+    minute = int(time.time() // 60)
+    ip = _client_ip(request)
+    group = "other"
+    if request.url.path.startswith("/v1/"):
+        group = "v1"
+    elif request.url.path.startswith("/admin/api/"):
+        group = "admin"
+    return f"rl:{group}:{ip}:{minute}"
+
+
+def _normalize_domain(domain: str) -> str:
+    value = domain.strip().lower()
+    if not value:
+        return ""
+    if value in {"*", "*.*"}:
+        return "*"
+    parsed = urlparse(value if "://" in value else f"https://{value}")
+    host = parsed.hostname or value
+    host = host.split("/")[0].split(":")[0].strip(".")
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _domain_matches(stored_domain: str, request_domain: str) -> bool:
+    normalized_request = _normalize_domain(request_domain)
+    if not normalized_request:
+        return False
+    stored_raw = stored_domain.strip()
+    if not stored_raw:
+        return True
+    candidates = [part.strip() for part in re.split(r"[,;\s]+", stored_raw) if part.strip()]
+    for candidate in candidates:
+        normalized = _normalize_domain(candidate)
+        if not normalized:
+            continue
+        if normalized == "*":
+            return True
+        if normalized.startswith("*."):
+            base = normalized[2:]
+            if normalized_request == base or normalized_request.endswith(f".{base}"):
+                return True
+            continue
+        if normalized_request == normalized:
+            return True
+    return False
+
+
+def _normalize_domain_list(raw: str) -> str:
+    parts = [part.strip() for part in re.split(r"[,;\s]+", raw) if part.strip()]
+    if not parts:
+        return ""
+    normalized: list[str] = []
+    for part in parts:
+        item = _normalize_domain(part)
+        if item and item not in normalized:
+            normalized.append(item)
+    return ",".join(normalized)
+
+
+def _generate_license_key() -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    groups = ["".join(secrets.choice(alphabet) for _ in range(4)) for _ in range(3)]
+    return "-".join(groups)
+
+
+def _qr_svg_from_text(payload: str) -> str:
+    qr = qrcode.QRCode(border=2, box_size=7)
+    qr.add_data(payload)
+    qr.make(fit=True)
+    img = qr.make_image(image_factory=SvgImage)
+    out = BytesIO()
+    img.save(out)
+    return out.getvalue().decode("utf-8")
+
+
+def _pending_2fa_key(username: str) -> str:
+    return f"admin:2fa:pending:{username}"
+
+
 @app.middleware("http")
 async def capture_body(request: Request, call_next):
+    limited = request.url.path.startswith("/v1/") or request.url.path.startswith("/admin/api/")
+    if limited and settings.rate_limit_per_minute > 0:
+        key = _rate_limit_key(request)
+        try:
+            hits = int(redis_client.incr(key))
+            if hits == 1:
+                redis_client.expire(key, 70)
+            if hits > settings.rate_limit_per_minute:
+                return JSONResponse(status_code=429, content={"detail": "rate limit exceeded"})
+        except Exception:
+            # Fail-open on Redis errors to avoid false downtime.
+            pass
+
     request_id = uuid.uuid4().hex
     started = time.perf_counter()
     request.state.request_id = request_id
@@ -237,6 +350,11 @@ def admin_api_session(session=Depends(admin_session_dep)) -> AdminSessionInfoRes
     return AdminSessionInfoResponse(username=session.username)
 
 
+@app.post("/admin/api/license/generate", response_model=AdminLicenseGenerateResponse)
+def admin_api_license_generate(_=Depends(admin_session_dep)) -> AdminLicenseGenerateResponse:
+    return AdminLicenseGenerateResponse(license_key=_generate_license_key())
+
+
 @app.get("/admin/api/license/list", response_model=AdminLicenseListResponse)
 def admin_api_license_list(
     q: str = "",
@@ -319,6 +437,88 @@ def admin_api_user_upsert(
     return {"ok": True}
 
 
+@app.post("/admin/api/user/set-active")
+def admin_api_user_set_active(
+    payload: AdminUserSetActiveRequest,
+    session=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> dict:
+    current = db.scalar(select(AdminUser).where(AdminUser.username == session.username).limit(1))
+    if not current or not current.is_superadmin:
+        raise HTTPException(status_code=403, detail="superadmin required")
+    row = db.scalar(select(AdminUser).where(AdminUser.username == payload.username).limit(1))
+    if not row:
+        raise HTTPException(status_code=404, detail="user not found")
+    if row.username == session.username and not payload.is_active:
+        raise HTTPException(status_code=400, detail="cannot disable current user")
+    row.is_active = 1 if payload.is_active else 0
+    db.add(row)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/admin/api/user/2fa/start", response_model=AdminTwoFaStartResponse)
+def admin_api_user_2fa_start(
+    session=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> AdminTwoFaStartResponse:
+    row = db.scalar(select(AdminUser).where(AdminUser.username == session.username).limit(1))
+    if not row or not row.is_active:
+        raise HTTPException(status_code=401, detail="admin account inactive")
+    secret = pyotp.random_base32()
+    issuer = "PayByQR Woo Backend"
+    otpauth_url = pyotp.TOTP(secret).provisioning_uri(name=row.username, issuer_name=issuer)
+    redis_client.setex(_pending_2fa_key(row.username), 10 * 60, secret)
+    return AdminTwoFaStartResponse(
+        secret=secret,
+        otpauth_url=otpauth_url,
+        qr_svg=_qr_svg_from_text(otpauth_url),
+    )
+
+
+@app.post("/admin/api/user/2fa/confirm")
+def admin_api_user_2fa_confirm(
+    payload: AdminTwoFaConfirmRequest,
+    session=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> dict:
+    row = db.scalar(select(AdminUser).where(AdminUser.username == session.username).limit(1))
+    if not row:
+        raise HTTPException(status_code=404, detail="user not found")
+    secret = redis_client.get(_pending_2fa_key(row.username)) or ""
+    if not secret:
+        raise HTTPException(status_code=400, detail="2fa setup expired, start again")
+    if not verify_totp(secret, payload.otp_code):
+        raise HTTPException(status_code=400, detail="invalid otp code")
+    row.twofa_enabled = 1
+    row.twofa_secret = secret
+    db.add(row)
+    db.commit()
+    redis_client.delete(_pending_2fa_key(row.username))
+    return {"ok": True}
+
+
+@app.post("/admin/api/user/2fa/disable")
+def admin_api_user_2fa_disable(
+    payload: AdminTwoFaDisableRequest,
+    session=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> dict:
+    row = db.scalar(select(AdminUser).where(AdminUser.username == session.username).limit(1))
+    if not row:
+        raise HTTPException(status_code=404, detail="user not found")
+    if not verify_password(payload.password, row.password_hash):
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    if row.twofa_enabled and not verify_totp(row.twofa_secret, payload.otp_code):
+        raise HTTPException(status_code=400, detail="invalid otp code")
+    row.twofa_enabled = 0
+    row.twofa_secret = ""
+    db.add(row)
+    db.commit()
+    redis_client.delete(_pending_2fa_key(row.username))
+    return {"ok": True}
+
+
 @app.post("/admin/api/user/delete")
 def admin_api_user_delete(
     payload: AdminUserDeleteRequest,
@@ -371,7 +571,8 @@ def license_validate(
     if license_row.expires_at and license_row.expires_at < datetime.now(timezone.utc):
         return LicenseValidateResponse(valid=False, reason="license expired")
 
-    if license_row.domain and license_row.domain != "*" and license_row.domain != payload.domain:
+    requested_domain = _normalize_domain(payload.domain)
+    if not _domain_matches(license_row.domain, requested_domain):
         return LicenseValidateResponse(valid=False, reason="domain mismatch")
 
     if license_row.plugin_instance_id and license_row.plugin_instance_id != payload.plugin_instance_id:
@@ -379,7 +580,7 @@ def license_validate(
 
     changed = False
     if not license_row.domain:
-        license_row.domain = payload.domain
+        license_row.domain = requested_domain
         changed = True
     if not license_row.plugin_instance_id:
         license_row.plugin_instance_id = payload.plugin_instance_id
@@ -404,7 +605,7 @@ def admin_license_upsert(
         license_row = License(license_key=payload.license_key)
 
     license_row.status = payload.status
-    license_row.domain = payload.domain
+    license_row.domain = _normalize_domain_list(payload.domain)
     license_row.plugin_instance_id = payload.plugin_instance_id
     license_row.expires_at = payload.expires_at
     license_row.note = payload.note
@@ -462,6 +663,11 @@ def admin_license_delete(
     db.delete(row)
     db.commit()
     return {"ok": True}
+
+
+@app.post("/v1/admin/license/generate", response_model=AdminLicenseGenerateResponse)
+def admin_license_generate(_: None = Depends(_admin_token_dep)) -> AdminLicenseGenerateResponse:
+    return AdminLicenseGenerateResponse(license_key=_generate_license_key())
 
 
 @app.post("/v1/admin/client/upsert", response_model=AdminClientResponse)

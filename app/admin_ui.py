@@ -15,7 +15,7 @@ ADMIN_HTML = """<!doctype html>
       --primary-soft: #eff5ff;
       --danger: #b42318;
       --ok: #067647;
-      --shadow: 0 8px 24px rgba(17, 34, 68, 0.06);
+      --shadow: 0 8px 24px rgba(17, 34, 68, 0.08);
     }
     * { box-sizing: border-box; }
     body {
@@ -24,10 +24,32 @@ ADMIN_HTML = """<!doctype html>
       color: var(--text);
       background: radial-gradient(circle at 10% 0%, #e7eefc 0, var(--bg) 48%);
     }
-    .shell { max-width: 1240px; margin: 0 auto; padding: 18px; }
+    .hidden { display: none !important; }
+
+    .auth-screen {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 460px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+    .auth-card h1 { margin: 0 0 8px; font-size: 26px; }
+    .auth-card p { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+
+    .shell { max-width: 1280px; margin: 0 auto; padding: 18px; }
     h1 { margin: 0 0 14px; font-size: 26px; }
     h2 { margin: 0 0 10px; font-size: 18px; }
     .sub { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+
     .grid { display: grid; gap: 14px; grid-template-columns: repeat(12, 1fr); }
     .card {
       background: var(--card);
@@ -44,32 +66,27 @@ ADMIN_HTML = """<!doctype html>
 
     .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
-    .field { display: grid; gap: 4px; min-width: 180px; }
+    .field { display: grid; gap: 6px; min-width: 180px; margin-bottom: 10px; }
     .field label { font-size: 12px; color: var(--muted); }
-    input, select, button {
+
+    input, select, button, textarea {
       border-radius: 8px;
       border: 1px solid #b7c4de;
-      padding: 9px 10px;
+      padding: 10px 11px;
       font-size: 14px;
       background: #fff;
     }
     input, select { min-width: 180px; }
-    input.wide { min-width: 260px; }
+    input.wide { min-width: 280px; }
     input.slim { min-width: 120px; }
     input[type="checkbox"] { min-width: auto; }
-    button {
-      border: none;
-      cursor: pointer;
-      color: #fff;
-      background: var(--primary);
-    }
+    button { border: none; cursor: pointer; color: #fff; background: var(--primary); }
     button.secondary { background: #47587b; }
     button.ghost { background: #edf2ff; color: #1f3d72; border: 1px solid #c9d7f6; }
     button.danger { background: var(--danger); }
     .btn-xs { padding: 6px 8px; font-size: 12px; }
 
-    .hidden { display: none !important; }
-    .status { margin-top: 4px; min-height: 20px; font-size: 13px; }
+    .status { margin-top: 6px; min-height: 20px; font-size: 13px; }
     .status.ok { color: var(--ok); }
     .status.err { color: var(--danger); }
     .hint { color: var(--muted); font-size: 12px; }
@@ -83,6 +100,7 @@ ADMIN_HTML = """<!doctype html>
       padding: 4px 10px;
       font-size: 12px;
     }
+
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { border-bottom: 1px solid #e9eef7; text-align: left; vertical-align: top; padding: 8px 6px; }
     th { background: #f7faff; font-weight: 600; }
@@ -96,148 +114,194 @@ ADMIN_HTML = """<!doctype html>
       background: #f6f9ff;
       color: #26406f;
     }
+    .qr-box {
+      border: 1px dashed #bcc9e4;
+      border-radius: 10px;
+      padding: 10px;
+      max-width: 270px;
+      background: #fbfdff;
+    }
+    .qr-box svg { width: 100%; height: auto; }
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body>
-  <div class="shell">
-    <h1>Pay By QR Admin</h1>
+  <div id="login_screen" class="auth-screen">
+    <div class="auth-card">
+      <h1>Pay By QR Admin</h1>
+      <p>Sign in to manage licenses and admin accounts.</p>
 
-    <div id="login_card" class="grid">
-      <div class="card span-6">
-        <h2>Admin Login</h2>
-        <p class="sub">Session-based authentication for UI management.</p>
-        <div class="field">
-          <label for="username">Username</label>
-          <input id="username" type="text" autocomplete="username">
-        </div>
-        <div class="field">
-          <label for="password">Password</label>
-          <input id="password" type="password" autocomplete="current-password">
-        </div>
-        <div id="otp_field" class="field hidden">
-          <label for="otp_code">TOTP code</label>
-          <input id="otp_code" class="slim" type="text" maxlength="12" placeholder="123456">
-        </div>
-        <div id="turnstile_box" class="hidden"></div>
-        <div class="row">
-          <button id="btn_login" type="button">Login</button>
-        </div>
-        <div id="status" class="status"></div>
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" type="text" autocomplete="username">
       </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password">
+      </div>
+      <div id="otp_field" class="field hidden">
+        <label for="otp_code">TOTP code</label>
+        <input id="otp_code" class="slim" type="text" maxlength="12" placeholder="123456">
+      </div>
+      <div id="turnstile_box" class="hidden"></div>
+      <div id="turnstile_hint" class="hint"></div>
+
+      <div class="row" style="margin-top: 14px;">
+        <button id="btn_login" type="button">Login</button>
+      </div>
+      <div id="status" class="status"></div>
     </div>
+  </div>
 
-    <div id="app" class="hidden">
-      <div class="grid">
-        <div class="card span-12">
-          <div class="toolbar">
-            <div class="row">
-              <div id="session_user" class="pill">Logged in</div>
-              <span class="hint">Actions are applied immediately.</span>
-            </div>
-            <div class="row">
-              <button id="btn_refresh_all" type="button" class="secondary btn-xs">Refresh Data</button>
-              <button id="btn_logout" type="button" class="secondary btn-xs">Logout</button>
-            </div>
-          </div>
-          <div id="app_status" class="status"></div>
-        </div>
-
-        <div class="card span-8">
-          <h2>Licenses</h2>
-          <p class="sub">Select row with Edit, remove with X.</p>
-          <div class="toolbar">
-            <input id="search" type="text" class="wide" placeholder="Search key, domain, note">
-            <button id="btn_licenses_refresh" type="button" class="secondary btn-xs">Refresh</button>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>License</th>
-                <th>Status</th>
-                <th>Domain</th>
-                <th>Instance</th>
-                <th>Expires</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="license_rows"></tbody>
-          </table>
-        </div>
-
-        <div class="card span-4">
-          <h2>License Form</h2>
-          <p class="sub">Create or update one license.</p>
-          <div class="field">
-            <label for="license_key">License key</label>
-            <input id="license_key" type="text" placeholder="xxxx-xxxx-xxxx">
-          </div>
-          <div class="field">
-            <label for="license_status">Status</label>
-            <select id="license_status">
-              <option value="active">active</option>
-              <option value="blocked">blocked</option>
-              <option value="expired">expired</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="domain">Domain</label>
-            <input id="domain" type="text" placeholder="example.com or *">
-          </div>
-          <div class="field">
-            <label for="plugin_instance_id">Plugin instance ID</label>
-            <input id="plugin_instance_id" type="text" placeholder="optional">
-          </div>
-          <div class="field">
-            <label for="expires_at">Expires at</label>
-            <input id="expires_at" type="datetime-local">
-          </div>
-          <div class="field">
-            <label for="note">Note</label>
-            <input id="note" type="text" placeholder="internal note">
+  <div id="app" class="hidden shell">
+    <h1>Pay By QR Admin</h1>
+    <div class="grid">
+      <div class="card span-12">
+        <div class="toolbar">
+          <div class="row">
+            <div id="session_user" class="pill">Logged in</div>
+            <span class="hint">Rate limit enabled per IP.</span>
           </div>
           <div class="row">
-            <button id="btn_license_save" type="button">Save</button>
-            <button id="btn_license_delete" type="button" class="danger">Delete</button>
-            <button id="btn_license_clear" type="button" class="ghost">Clear</button>
+            <button id="btn_refresh_all" type="button" class="secondary btn-xs">Refresh Data</button>
+            <button id="btn_logout" type="button" class="secondary btn-xs">Logout</button>
           </div>
         </div>
+        <div id="app_status" class="status"></div>
+      </div>
 
-        <div class="card span-12">
-          <h2>Admin Accounts</h2>
-          <p class="sub">Only superadmin can manage accounts.</p>
+      <div class="card span-8">
+        <h2>Licenses</h2>
+        <p class="sub">Edit or delete existing licenses.</p>
+        <div class="toolbar">
+          <input id="search" type="text" class="wide" placeholder="Search key, domain, note">
+          <button id="btn_licenses_refresh" type="button" class="secondary btn-xs">Refresh</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>License</th>
+              <th>Status</th>
+              <th>Domain</th>
+              <th>Instance</th>
+              <th>Expires</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="license_rows"></tbody>
+        </table>
+      </div>
+
+      <div class="card span-4">
+        <h2>License Form</h2>
+        <p class="sub">Create/update one license key.</p>
+        <div class="field">
+          <label for="license_key">License key</label>
           <div class="row">
-            <div class="field">
-              <label for="u_username">Username</label>
-              <input id="u_username" type="text">
-            </div>
-            <div class="field">
-              <label for="u_password">Password</label>
-              <input id="u_password" type="password" placeholder="leave empty to keep">
-            </div>
-            <div class="field">
-              <label for="u_twofa_secret">TOTP secret</label>
-              <input id="u_twofa_secret" type="text" placeholder="optional; auto-generated if empty">
-            </div>
+            <input id="license_key" type="text" placeholder="xxxx-xxxx-xxxx" class="wide">
+            <button id="btn_license_generate" type="button" class="ghost">Generate</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="license_status">Status</label>
+          <select id="license_status">
+            <option value="active">active</option>
+            <option value="blocked">blocked</option>
+            <option value="expired">expired</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="domain">Domain</label>
+          <input id="domain" type="text" placeholder="example.com, www.example.com">
+        </div>
+        <div class="field">
+          <label for="plugin_instance_id">Plugin instance ID</label>
+          <input id="plugin_instance_id" type="text" placeholder="optional">
+        </div>
+        <div class="field">
+          <label for="expires_at">Expires at</label>
+          <input id="expires_at" type="datetime-local">
+        </div>
+        <div class="field">
+          <label for="note">Note</label>
+          <input id="note" type="text" placeholder="internal note">
+        </div>
+        <div class="row">
+          <button id="btn_license_save" type="button">Save</button>
+          <button id="btn_license_delete" type="button" class="danger">Delete</button>
+          <button id="btn_license_clear" type="button" class="ghost">Clear</button>
+        </div>
+      </div>
+
+      <div class="card span-6">
+        <h2>Admin Accounts</h2>
+        <p class="sub">Edit account flags or disable login access.</p>
+        <div class="row">
+          <div class="field">
+            <label for="u_username">Username</label>
+            <input id="u_username" type="text">
+          </div>
+          <div class="field">
+            <label for="u_password">Password</label>
+            <input id="u_password" type="password" placeholder="leave empty to keep">
+          </div>
+          <div class="field">
+            <label for="u_twofa_secret">TOTP secret (manual)</label>
+            <input id="u_twofa_secret" type="text" placeholder="optional">
+          </div>
+        </div>
+        <div class="row">
+          <label><input id="u_active" type="checkbox" checked> Active login</label>
+          <label><input id="u_superadmin" type="checkbox"> Superadmin</label>
+          <label><input id="u_twofa" type="checkbox"> 2FA enabled</label>
+          <button id="btn_user_save" type="button">Save User</button>
+          <button id="btn_user_clear" type="button" class="ghost">Clear</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Flags</th>
+              <th>2FA</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="user_rows"></tbody>
+        </table>
+      </div>
+
+      <div class="card span-6">
+        <h2>My Security</h2>
+        <p class="sub">Enable 2FA by scanning QR in authenticator app, then confirm with one-time code.</p>
+        <div id="my_security_state" class="hint">Loading...</div>
+        <div class="row">
+          <button id="btn_2fa_start" type="button">Start 2FA Setup</button>
+        </div>
+        <div id="twofa_setup" class="hidden">
+          <div class="qr-box" id="twofa_qr"></div>
+          <div class="field">
+            <label for="twofa_secret">Secret</label>
+            <input id="twofa_secret" type="text" readonly>
+          </div>
+          <div class="field">
+            <label for="twofa_code">Confirm code</label>
+            <input id="twofa_code" type="text" class="slim" maxlength="12" placeholder="123456">
           </div>
           <div class="row">
-            <label><input id="u_active" type="checkbox" checked> Active</label>
-            <label><input id="u_superadmin" type="checkbox"> Superadmin</label>
-            <label><input id="u_twofa" type="checkbox"> 2FA enabled</label>
-            <button id="btn_user_save" type="button">Save User</button>
-            <button id="btn_user_clear" type="button" class="ghost">Clear</button>
+            <button id="btn_2fa_confirm" type="button">Confirm & Enable</button>
           </div>
-          <table>
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Flags</th>
-                <th>2FA</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="user_rows"></tbody>
-          </table>
+        </div>
+        <hr>
+        <div class="field">
+          <label for="disable_password">Disable 2FA: account password</label>
+          <input id="disable_password" type="password">
+        </div>
+        <div class="field">
+          <label for="disable_otp">Disable 2FA: current OTP code</label>
+          <input id="disable_otp" type="text" class="slim" maxlength="12">
+        </div>
+        <div class="row">
+          <button id="btn_2fa_disable" type="button" class="danger">Disable 2FA</button>
         </div>
       </div>
     </div>
@@ -247,6 +311,7 @@ ADMIN_HTML = """<!doctype html>
 let loginOptions = { twofa_required: false, turnstile_required: false, turnstile_site_key: "" };
 let turnstileWidgetId = null;
 let searchTimer = null;
+let sessionUser = "";
 
 function setStatus(elId, msg, ok=true) {
   const el = document.getElementById(elId);
@@ -275,20 +340,21 @@ function toLocalInput(isoValue) {
 
 function resetTurnstile() {
   if (window.turnstile && turnstileWidgetId !== null) {
-    try {
-      window.turnstile.reset(turnstileWidgetId);
-    } catch (err) {}
+    try { window.turnstile.reset(turnstileWidgetId); } catch (err) {}
   }
 }
 
 function renderTurnstile() {
   const box = document.getElementById("turnstile_box");
+  const hint = document.getElementById("turnstile_hint");
   if (!loginOptions.turnstile_required || !loginOptions.turnstile_site_key || !window.turnstile) {
     box.classList.add("hidden");
     box.innerHTML = "";
     turnstileWidgetId = null;
+    hint.textContent = "Cloudflare Turnstile is disabled. Set ADMIN_TURNSTILE_SITE_KEY and ADMIN_TURNSTILE_SECRET_KEY in .env to enable it.";
     return;
   }
+  hint.textContent = "Cloudflare Turnstile is enabled.";
   box.classList.remove("hidden");
   box.innerHTML = '<div id="turnstile_widget"></div>';
   turnstileWidgetId = window.turnstile.render("#turnstile_widget", {
@@ -319,6 +385,13 @@ async function refreshLoginOptions() {
   }
 }
 
+function showApp(username) {
+  sessionUser = username;
+  document.getElementById("login_screen").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  document.getElementById("session_user").textContent = "Logged in as: " + username;
+}
+
 async function login() {
   try {
     const payload = {
@@ -332,9 +405,7 @@ async function login() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    document.getElementById("login_card").classList.add("hidden");
-    document.getElementById("app").classList.remove("hidden");
-    document.getElementById("session_user").textContent = "Logged in as: " + data.username;
+    showApp(data.username);
     setStatus("status", "Logged in.");
     await loadAll();
   } catch (err) {
@@ -351,9 +422,7 @@ async function logout() {
 async function checkSession() {
   try {
     const data = await api("/admin/api/session");
-    document.getElementById("login_card").classList.add("hidden");
-    document.getElementById("app").classList.remove("hidden");
-    document.getElementById("session_user").textContent = "Logged in as: " + data.username;
+    showApp(data.username);
     await loadAll();
   } catch (err) {
     await refreshLoginOptions();
@@ -376,6 +445,16 @@ function fillLicenseForm(item) {
   document.getElementById("plugin_instance_id").value = item.plugin_instance_id || "";
   document.getElementById("expires_at").value = toLocalInput(item.expires_at);
   document.getElementById("note").value = item.note || "";
+}
+
+async function generateLicenseKey() {
+  try {
+    const data = await api("/admin/api/license/generate", { method: "POST" });
+    document.getElementById("license_key").value = data.license_key || "";
+    setStatus("app_status", "License key generated.");
+  } catch (err) {
+    setStatus("app_status", err.message, false);
+  }
 }
 
 async function upsertLicense() {
@@ -436,17 +515,25 @@ async function loadLicenses() {
   for (const item of data.items || []) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td class="mono">${item.license_key || ""}</td>
-      <td><span class="tag">${item.status || ""}</span></td>
-      <td>${item.domain || ""}</td>
-      <td class="mono">${item.plugin_instance_id || ""}</td>
-      <td>${item.expires_at || ""}</td>
+      <td class="mono"></td>
+      <td><span class="tag"></span></td>
+      <td></td>
+      <td class="mono"></td>
+      <td></td>
       <td class="tags">
-        <button type="button" class="btn-xs ghost js-license-edit" data-key="${item.license_key || ""}">Edit</button>
-        <button type="button" class="btn-xs danger js-license-delete" data-key="${item.license_key || ""}">X</button>
+        <button type="button" class="btn-xs ghost">Edit</button>
+        <button type="button" class="btn-xs danger">X</button>
       </td>
     `;
-    tr.dataset.item = JSON.stringify(item);
+    tr.children[0].textContent = item.license_key || "";
+    tr.children[1].querySelector("span").textContent = item.status || "";
+    tr.children[2].textContent = item.domain || "";
+    tr.children[3].textContent = item.plugin_instance_id || "";
+    tr.children[4].textContent = item.expires_at || "";
+    const editBtn = tr.children[5].children[0];
+    const delBtn = tr.children[5].children[1];
+    editBtn.addEventListener("click", () => fillLicenseForm(item));
+    delBtn.addEventListener("click", () => deleteLicense(item.license_key || ""));
     rows.appendChild(tr);
   }
 }
@@ -493,6 +580,20 @@ async function upsertUser() {
   }
 }
 
+async function setUserActive(username, isActive) {
+  try {
+    await api("/admin/api/user/set-active", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: username, is_active: isActive })
+    });
+    setStatus("app_status", isActive ? "User enabled." : "User disabled.");
+    await loadUsers();
+  } catch (err) {
+    setStatus("app_status", err.message, false);
+  }
+}
+
 async function deleteUser(username) {
   if (!confirm("Delete user '" + username + "'?")) return;
   try {
@@ -513,19 +614,99 @@ async function loadUsers() {
   const data = await api("/admin/api/user/list");
   const rows = document.getElementById("user_rows");
   rows.innerHTML = "";
+  let mine = null;
   for (const item of data.items || []) {
+    if (item.username === sessionUser) mine = item;
+
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td class="mono">${item.username || ""}</td>
-      <td>${item.is_active ? "active" : "inactive"} / ${item.is_superadmin ? "superadmin" : "standard"}</td>
-      <td>${item.twofa_enabled ? "enabled" : "disabled"}</td>
+      <td class="mono"></td>
+      <td></td>
+      <td></td>
       <td class="tags">
-        <button type="button" class="btn-xs ghost js-user-edit" data-user="${item.username || ""}">Edit</button>
-        <button type="button" class="btn-xs danger js-user-delete" data-user="${item.username || ""}">X</button>
+        <button type="button" class="btn-xs ghost">Edit</button>
+        <button type="button" class="btn-xs secondary"></button>
+        <button type="button" class="btn-xs danger">Delete</button>
       </td>
     `;
-    tr.dataset.item = JSON.stringify(item);
+    tr.children[0].textContent = item.username || "";
+    tr.children[1].textContent = (item.is_active ? "active" : "inactive") + " / " + (item.is_superadmin ? "superadmin" : "standard");
+    tr.children[2].textContent = item.twofa_enabled ? "enabled" : "disabled";
+
+    const editBtn = tr.children[3].children[0];
+    const toggleBtn = tr.children[3].children[1];
+    const delBtn = tr.children[3].children[2];
+    toggleBtn.textContent = item.is_active ? "Disable" : "Enable";
+
+    editBtn.addEventListener("click", () => fillUserForm(item));
+    toggleBtn.addEventListener("click", () => setUserActive(item.username, !item.is_active));
+    delBtn.addEventListener("click", () => deleteUser(item.username));
+
+    if (item.username === sessionUser) {
+      toggleBtn.disabled = true;
+      toggleBtn.textContent = "Current";
+    }
     rows.appendChild(tr);
+  }
+  refreshMySecurityState(mine);
+}
+
+function refreshMySecurityState(mine) {
+  const state = document.getElementById("my_security_state");
+  if (!mine) {
+    state.textContent = "Unable to load your account state.";
+    return;
+  }
+  state.textContent = mine.twofa_enabled ? "2FA is currently enabled." : "2FA is currently disabled.";
+}
+
+async function startTwoFaSetup() {
+  try {
+    const data = await api("/admin/api/user/2fa/start", { method: "POST" });
+    document.getElementById("twofa_setup").classList.remove("hidden");
+    document.getElementById("twofa_qr").innerHTML = data.qr_svg || "";
+    document.getElementById("twofa_secret").value = data.secret || "";
+    setStatus("app_status", "2FA setup started. Scan QR and confirm code.");
+  } catch (err) {
+    setStatus("app_status", err.message, false);
+  }
+}
+
+async function confirmTwoFaSetup() {
+  try {
+    const otp = document.getElementById("twofa_code").value.trim();
+    await api("/admin/api/user/2fa/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ otp_code: otp })
+    });
+    document.getElementById("twofa_setup").classList.add("hidden");
+    document.getElementById("twofa_code").value = "";
+    setStatus("app_status", "2FA enabled successfully.");
+    await loadUsers();
+  } catch (err) {
+    setStatus("app_status", err.message, false);
+  }
+}
+
+async function disableTwoFa() {
+  try {
+    const payload = {
+      password: document.getElementById("disable_password").value,
+      otp_code: document.getElementById("disable_otp").value.trim()
+    };
+    await api("/admin/api/user/2fa/disable", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    document.getElementById("disable_password").value = "";
+    document.getElementById("disable_otp").value = "";
+    document.getElementById("twofa_setup").classList.add("hidden");
+    setStatus("app_status", "2FA disabled.");
+    await loadUsers();
+  } catch (err) {
+    setStatus("app_status", err.message, false);
   }
 }
 
@@ -553,40 +734,17 @@ function bindEvents() {
   document.getElementById("btn_license_save").addEventListener("click", upsertLicense);
   document.getElementById("btn_license_delete").addEventListener("click", deleteLicenseFromForm);
   document.getElementById("btn_license_clear").addEventListener("click", clearLicenseForm);
+  document.getElementById("btn_license_generate").addEventListener("click", generateLicenseKey);
   document.getElementById("btn_user_save").addEventListener("click", upsertUser);
   document.getElementById("btn_user_clear").addEventListener("click", clearUserForm);
+  document.getElementById("btn_2fa_start").addEventListener("click", startTwoFaSetup);
+  document.getElementById("btn_2fa_confirm").addEventListener("click", confirmTwoFaSetup);
+  document.getElementById("btn_2fa_disable").addEventListener("click", disableTwoFa);
+
   document.getElementById("username").addEventListener("input", refreshLoginOptions);
   document.getElementById("search").addEventListener("input", debounceLoadLicenses);
   document.getElementById("password").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
   document.getElementById("otp_code").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
-
-  document.getElementById("license_rows").addEventListener("click", (event) => {
-    const editBtn = event.target.closest(".js-license-edit");
-    if (editBtn) {
-      const tr = editBtn.closest("tr");
-      if (!tr || !tr.dataset.item) return;
-      fillLicenseForm(JSON.parse(tr.dataset.item));
-      return;
-    }
-    const delBtn = event.target.closest(".js-license-delete");
-    if (delBtn) {
-      deleteLicense(delBtn.dataset.key || "");
-    }
-  });
-
-  document.getElementById("user_rows").addEventListener("click", (event) => {
-    const editBtn = event.target.closest(".js-user-edit");
-    if (editBtn) {
-      const tr = editBtn.closest("tr");
-      if (!tr || !tr.dataset.item) return;
-      fillUserForm(JSON.parse(tr.dataset.item));
-      return;
-    }
-    const delBtn = event.target.closest(".js-user-delete");
-    if (delBtn) {
-      deleteUser(delBtn.dataset.user || "");
-    }
-  });
 }
 
 bindEvents();
