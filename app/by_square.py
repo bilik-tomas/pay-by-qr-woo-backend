@@ -10,6 +10,15 @@ from pay_by_square import generate
 from .schemas import PBSGenerateRequest
 
 
+def _load_font(candidates: list[str], size: int):
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(candidate, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
 def generate_payload(data: PBSGenerateRequest) -> str:
     kwargs = {
         "amount": float(data.amount),
@@ -85,10 +94,13 @@ def payload_to_framed_png_base64(payload: str, label: str = "PAY by square", qr_
 
     canvas = Image.new("RGB", (canvas_w, canvas_h), (255, 255, 255))
     draw = ImageDraw.Draw(canvas)
-    try:
-        font = ImageFont.truetype("DejaVuSans.ttf", 24)
-    except Exception:
-        font = ImageFont.load_default()
+    font = _load_font(
+        [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "DejaVuSans.ttf",
+        ],
+        24,
+    )
 
     text_bbox = draw.textbbox((0, 0), label, font=font)
     text_w = text_bbox[2] - text_bbox[0]
@@ -133,12 +145,20 @@ def payload_to_card_png_bytes(
     card_w = qr_w + (pad_x * 2)
 
     # Card background.
-    try:
-        brand_font = ImageFont.truetype("DejaVuSans-Bold.ttf", max(22, int(round(40 * scale))))
-        sub_font = ImageFont.truetype("DejaVuSans.ttf", max(12, int(round(20 * scale))))
-    except Exception:
-        brand_font = ImageFont.load_default()
-        sub_font = ImageFont.load_default()
+    brand_font = _load_font(
+        [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "DejaVuSans-Bold.ttf",
+        ],
+        max(22, int(round(40 * scale))),
+    )
+    sub_font = _load_font(
+        [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "DejaVuSans.ttf",
+        ],
+        max(12, int(round(20 * scale))),
+    )
 
     # Probe text sizes to compute dynamic header height.
     probe = Image.new("RGB", (1, 1), (255, 255, 255))
