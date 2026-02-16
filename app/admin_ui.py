@@ -64,6 +64,7 @@ ADMIN_HTML = """<!doctype html>
     .status { margin-top: 6px; min-height: 20px; font-size: 13px; }
     .status.ok { color: var(--ok); }
     .status.err { color: var(--danger); }
+    .input-error { border: 1px solid var(--danger) !important; box-shadow: 0 0 0 1px rgba(180, 35, 24, 0.15); }
     .hint { color: var(--muted); font-size: 12px; }
     .pill { display: inline-flex; align-items: center; border: 1px solid #c6d1e8; border-radius: 999px; background: var(--primary-soft); color: #234274; padding: 4px 10px; font-size: 12px; }
 
@@ -417,6 +418,10 @@ function renderTurnstile() {
 function getTurnstileToken() { return (!window.turnstile || turnstileWidgetId === null) ? "" : (window.turnstile.getResponse(turnstileWidgetId) || ""); }
 function updateOtpVisibility() { document.getElementById("otp_field").classList.toggle("hidden", !loginOptions.twofa_required); }
 
+function clearLoginFieldErrors() {
+  document.getElementById("otp_code").classList.remove("input-error");
+}
+
 function updateTwoFaUiState() {
   document.getElementById("my_security_state").textContent = myTwoFaEnabled ? "2FA is currently enabled." : "2FA is currently disabled.";
   document.getElementById("twofa_start_area").classList.toggle("hidden", myTwoFaEnabled);
@@ -509,12 +514,25 @@ function applySessionInfo(data) {
 
 async function login() {
   try {
+    clearLoginFieldErrors();
+    const otpValue = document.getElementById("otp_code").value.trim();
+    if (loginOptions.twofa_required && !otpValue) {
+      document.getElementById("otp_code").classList.add("input-error");
+      setStatus("status", "TOTP code is required.", false);
+      return;
+    }
+    const turnstileToken = getTurnstileToken();
+    if (loginOptions.turnstile_required && !turnstileToken) {
+      setStatus("status", "Please complete Turnstile verification.", false);
+      return;
+    }
+
     setStatus("status", "Logging in...");
     const payload = {
       username: document.getElementById("username").value.trim(),
       password: document.getElementById("password").value,
-      otp_code: document.getElementById("otp_code").value.trim(),
-      turnstile_token: getTurnstileToken()
+      otp_code: otpValue,
+      turnstile_token: turnstileToken
     };
     await api("/admin/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const session = await api("/admin/api/session");
@@ -933,6 +951,7 @@ function bindEvents() {
   document.getElementById("search").addEventListener("input", debounceLoadLicenses);
   document.getElementById("password").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
   document.getElementById("otp_code").addEventListener("keydown", (event) => { if (event.key === "Enter") login(); });
+  document.getElementById("otp_code").addEventListener("input", () => document.getElementById("otp_code").classList.remove("input-error"));
 }
 
 function initAdminUi() {
