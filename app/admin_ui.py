@@ -83,7 +83,14 @@ ADMIN_HTML = """<!doctype html>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body>
-  <div id="login_screen" class="auth-screen">
+  <div id="boot_screen" class="auth-screen">
+    <div class="auth-card">
+      <h1>Pay By QR Admin</h1>
+      <p>Checking session...</p>
+    </div>
+  </div>
+
+  <div id="login_screen" class="auth-screen hidden">
     <div class="auth-card">
       <h1>Pay By QR Admin</h1>
       <p>Sign in to manage licenses and security settings.</p>
@@ -527,12 +534,16 @@ async function logout() { try { await api("/admin/api/logout", { method: "POST" 
 async function checkSession() {
   try {
     const session = await api("/admin/api/session");
+    document.getElementById("boot_screen").classList.add("hidden");
     document.getElementById("login_screen").classList.add("hidden");
     document.getElementById("app").classList.remove("hidden");
     await refreshLoginOptions();
     applySessionInfo(session);
     await loadAll();
   } catch (err) {
+    document.getElementById("boot_screen").classList.add("hidden");
+    document.getElementById("app").classList.add("hidden");
+    document.getElementById("login_screen").classList.remove("hidden");
     await refreshLoginOptions();
   }
 }
