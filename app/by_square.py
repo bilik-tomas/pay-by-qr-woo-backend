@@ -174,9 +174,14 @@ def payload_to_card_png_bytes(
     subtitle_w = subtitle_box[2] - subtitle_box[0]
     subtitle_h = subtitle_box[3] - subtitle_box[1]
 
-    qr_y = subtitle_top + subtitle_h + subtitle_to_qr_gap
+    content_h = subtitle_h + subtitle_to_qr_gap + qr_h + qr_to_brand_gap + title_h
+    content_block_h = content_h + subtitle_top + brand_to_bottom_gap
+    card_h = max(output_size, content_block_h)
+
+    # Keep the whole content block vertically centered when final canvas is taller.
+    offset_y = max(0, (card_h - content_block_h) // 2)
+    qr_y = subtitle_top + subtitle_h + subtitle_to_qr_gap + offset_y
     brand_y = qr_y + qr_h + qr_to_brand_gap
-    card_h = max(output_size, brand_y + title_h + brand_to_bottom_gap)
 
     canvas = Image.new("RGB", (card_w, card_h), (245, 248, 255))
     draw = ImageDraw.Draw(canvas)
@@ -191,7 +196,7 @@ def payload_to_card_png_bytes(
     )
 
     draw.text(
-        ((card_w - subtitle_w) // 2, subtitle_top),
+        ((card_w - subtitle_w) // 2, subtitle_top + offset_y),
         subtitle,
         fill=(84, 102, 140),
         font=sub_font,
