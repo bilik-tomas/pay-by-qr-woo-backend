@@ -29,7 +29,12 @@ from .admin_auth import (
     verify_password,
     verify_totp,
 )
-from .by_square import generate_payload, payload_to_png_base64, payload_to_svg
+from .by_square import (
+    generate_payload,
+    payload_to_framed_png_base64,
+    payload_to_png_base64,
+    payload_to_svg,
+)
 from .config import settings
 from .db import SessionLocal, get_db
 from .models import AdminUser, AuditLog, Client, License
@@ -853,7 +858,13 @@ def pbs_generate(
         pbs_payload = generate_payload(payload)
         qr_svg = payload_to_svg(pbs_payload)
         qr_png_base64 = payload_to_png_base64(pbs_payload)
-        return PBSGenerateResponse(payload=pbs_payload, qr_svg=qr_svg, qr_png_base64=qr_png_base64)
+        qr_png_framed_base64 = payload_to_framed_png_base64(pbs_payload)
+        return PBSGenerateResponse(
+            payload=pbs_payload,
+            qr_svg=qr_svg,
+            qr_png_base64=qr_png_base64,
+            qr_png_framed_base64=qr_png_framed_base64,
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"generation failed: {exc}") from exc
 
