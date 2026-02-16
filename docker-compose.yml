@@ -1,0 +1,35 @@
+services:
+  api:
+    build: .
+    container_name: pbs_api
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+
+  db:
+    image: postgres:16-alpine
+    container_name: pbs_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pbs}
+      POSTGRES_USER: ${POSTGRES_USER:-pbs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: pbs_redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
