@@ -246,6 +246,11 @@ ADMIN_HTML = """<!doctype html>
       <div id="superadmin_security" class="card span-12 hidden">
         <h2>Security Dashboard</h2>
         <p class="sub" id="turnstile_status_text"></p>
+        <div class="row">
+          <button id="btn_export_blocks_csv" type="button" class="ghost">Export Blocks CSV</button>
+          <button id="btn_export_license_stats_csv" type="button" class="ghost">Export License Stats CSV</button>
+          <button id="btn_export_audit_csv" type="button" class="ghost">Export Audit CSV</button>
+        </div>
         <div class="grid">
           <div class="span-6">
             <h3>Blocked Actors</h3>
@@ -312,6 +317,31 @@ function updateTwoFaUiState() {
   document.getElementById("twofa_start_area").classList.toggle("hidden", myTwoFaEnabled);
   document.getElementById("twofa_disable_area").classList.toggle("hidden", !myTwoFaEnabled);
   if (myTwoFaEnabled) document.getElementById("twofa_setup").classList.add("hidden");
+}
+
+function csvEscape(value) {
+  const s = String(value ?? "");
+  if (s.includes(",") || s.includes("\"") || s.includes("\\n")) {
+    return "\"" + s.replaceAll("\"", "\"\"") + "\"";
+  }
+  return s;
+}
+
+function downloadCsv(filename, headers, rows) {
+  const lines = [];
+  lines.push(headers.map(csvEscape).join(","));
+  for (const row of rows) {
+    lines.push(row.map(csvEscape).join(","));
+  }
+  const blob = new Blob([lines.join("\\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 async function refreshLoginOptions() {
@@ -597,6 +627,25 @@ async function loadBlockedActors() {
   }
 }
 
+async function exportBlocksCsv() {
+  try {
+    const data = await api("/admin/api/security/blocks");
+    const rows = (data.items || []).map((item) => [
+      item.actor,
+      item.ip,
+      item.domain,
+      item.mode,
+      item.reason,
+      item.fail_count,
+      item.level,
+      item.expires_in_seconds
+    ]);
+    downloadCsv("security-blocks.csv", ["actor", "ip", "domain", "mode", "reason", "fail_count", "level", "expires_in_seconds"], rows);
+  } catch (err) {
+    setStatus("app_status", err.message, false);
+  }
+}
+
 async function unblockActor(actor) {
   try {
     await api("/admin/api/security/unblock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor: actor }) });
@@ -617,6 +666,35 @@ async function loadLicenseStats() {
     tr.children[1].textContent = String(item.total_calls);
     tr.children[2].textContent = String(item.current_minute_calls);
     rows.appendChild(tr);
+  }
+}
+
+async function exportLicenseStatsCsv() {
+  try {
+    const data = await api("/admin/api/security/license-stats");
+    const rows = (data.items || []).map((item) => [item.license_key, item.total_calls, item.current_minute_calls]);
+    downloadCsv("license-rate-stats.csv", ["license_key", "total_calls", "current_minute_calls"], rows);
+  } catch (err) {
+    setStatus("app_status", err.message, false);
+  }
+}
+
+async function exportAuditCsv() {
+  try {
+    const data = await api("/admin/api/security/audit?limit=2000");
+    const rows = (data.items || []).map((item) => [
+      item.created_at,
+      item.request_id,
+      item.client_id,
+      item.method,
+      item.path,
+      item.status_code,
+      item.latency_ms,
+      item.error_detail
+    ]);
+    downloadCsv("audit-log.csv", ["created_at", "request_id", "client_id", "method", "path", "status_code", "latency_ms", "error_detail"], rows);
+  } catch (err) {
+    setStatus("app_status", err.message, false);
   }
 }
 
@@ -650,6 +728,9 @@ function bindEvents() {
   document.getElementById("btn_2fa_start").addEventListener("click", startTwoFaSetup);
   document.getElementById("btn_2fa_confirm").addEventListener("click", confirmTwoFaSetup);
   document.getElementById("btn_2fa_disable").addEventListener("click", disableTwoFa);
+  document.getElementById("btn_export_blocks_csv").addEventListener("click", exportBlocksCsv);
+  document.getElementById("btn_export_license_stats_csv").addEventListener("click", exportLicenseStatsCsv);
+  document.getElementById("btn_export_audit_csv").addEventListener("click", exportAuditCsv);
 
   document.getElementById("username").addEventListener("input", refreshLoginOptions);
   document.getElementById("search").addEventListener("input", debounceLoadLicenses);

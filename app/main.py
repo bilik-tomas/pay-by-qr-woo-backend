@@ -616,6 +616,34 @@ def admin_api_security_license_stats(
     return AdminLicenseRateStatsResponse(items=items)
 
 
+@app.get("/admin/api/security/audit", response_model=AdminAuditLogListResponse)
+def admin_api_security_audit(
+    limit: int = 500,
+    session=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> AdminAuditLogListResponse:
+    _require_superadmin(session, db)
+    safe_limit = max(1, min(2000, limit))
+    rows = db.scalars(
+        select(AuditLog).order_by(desc(AuditLog.created_at)).limit(safe_limit)
+    ).all()
+    return AdminAuditLogListResponse(
+        items=[
+            AdminAuditLogItem(
+                request_id=row.request_id,
+                client_id=row.client_id,
+                method=row.method,
+                path=row.path,
+                status_code=row.status_code,
+                latency_ms=row.latency_ms,
+                created_at=row.created_at,
+                error_detail=row.error_detail,
+            )
+            for row in rows
+        ]
+    )
+
+
 @app.get("/admin/api/user/list", response_model=AdminUserListResponse)
 def admin_api_user_list(_=Depends(admin_session_dep), db: Session = Depends(get_db)) -> AdminUserListResponse:
     rows = db.scalars(select(AdminUser).order_by(AdminUser.username.asc())).all()
