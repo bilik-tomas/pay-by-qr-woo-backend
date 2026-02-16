@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import base64
 from io import BytesIO
 import json
 import re
@@ -18,6 +19,7 @@ from qrcode.image.svg import SvgImage
 from redis import Redis
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
+from typing import Any
 
 from .admin_ui import ADMIN_HTML
 from .admin_auth import (
@@ -38,6 +40,9 @@ from .schemas import (
     AdminSessionInfoResponse,
     AdminAuditLogItem,
     AdminAuditLogListResponse,
+    AdminBlockDeleteRequest,
+    AdminBlockItem,
+    AdminBlockListResponse,
     AdminClientResponse,
     AdminClientRotateSecretRequest,
     AdminClientUpsertRequest,
@@ -47,6 +52,8 @@ from .schemas import (
     AdminLicenseGenerateResponse,
     AdminLicenseUpsertRequest,
     AdminLicenseUpsertResponse,
+    AdminLicenseRateStatsItem,
+    AdminLicenseRateStatsResponse,
     AdminTwoFaConfirmRequest,
     AdminTwoFaDisableRequest,
     AdminTwoFaStartResponse,
@@ -157,9 +164,131 @@ def _pending_2fa_key(username: str) -> str:
     return f"admin:2fa:pending:{username}"
 
 
+def _actor_id(ip: str, domain: str) -> str:
+    safe_ip = ip or "unknown"
+    safe_domain = domain or "-"
+    return f"{safe_ip}|{safe_domain}"
+
+
+def _extract_request_payload(request: Request, body: bytes) -> dict[str, Any]:
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "application/json" not in content_type:
+        return {}
+    try:
+        parsed = json.loads(body.decode("utf-8"))
+    except Exception:
+        return {}
+    if isinstance(parsed, dict):
+        return parsed
+    return {}
+
+
+def _extract_domain_and_license(payload: dict[str, Any]) -> tuple[str, str]:
+    domain = _normalize_domain(str(payload.get("domain", "")).strip())
+    license_key = str(payload.get("license_key", "")).strip()
+    return domain, license_key
+
+
+def _is_hard_banned(actor: str) -> bool:
+    return bool(redis_client.exists(f"abuse:block:hard:{actor}"))
+
+
+def _temporary_block_ttl(actor: str) -> int:
+    ttl = int(redis_client.ttl(f"abuse:block:active:{actor}"))
+    return ttl if ttl > 0 else 0
+
+
+def _register_temp_block(actor: str, ip: str, domain: str, reason: str, level: int, duration_seconds: int) -> None:
+    now = int(time.time())
+    expires_at = now + duration_seconds
+    redis_client.setex(f"abuse:block:active:{actor}", duration_seconds, str(expires_at))
+    redis_client.hset(
+        f"abuse:block:meta:{actor}",
+        mapping={
+            "ip": ip,
+            "domain": domain,
+            "mode": "temp",
+            "reason": reason,
+            "level": str(level),
+            "updated_at": str(now),
+        },
+    )
+    redis_client.sadd("abuse:block:index", actor)
+
+
+def _register_hard_block(actor: str, ip: str, domain: str, reason: str) -> None:
+    now = int(time.time())
+    redis_client.set(f"abuse:block:hard:{actor}", "1")
+    redis_client.hset(
+        f"abuse:block:meta:{actor}",
+        mapping={
+            "ip": ip,
+            "domain": domain,
+            "mode": "hard",
+            "reason": reason,
+            "level": "999",
+            "updated_at": str(now),
+        },
+    )
+    redis_client.sadd("abuse:block:index", actor)
+
+
+def _register_failure(ip: str, domain: str, reason: str) -> None:
+    actor = _actor_id(ip, domain)
+    fail_key = f"abuse:fail:{actor}"
+    level_key = f"abuse:level:{actor}"
+    total = int(redis_client.incr(fail_key))
+    redis_client.expire(fail_key, 48 * 3600)
+    if total >= settings.abuse_hard_ban_threshold:
+        _register_hard_block(actor, ip, domain, reason)
+        return
+    if total % 3 != 0:
+        redis_client.hset(f"abuse:block:meta:{actor}", mapping={"ip": ip, "domain": domain, "reason": reason, "fail_count": str(total)})
+        redis_client.sadd("abuse:block:index", actor)
+        return
+    level = int(redis_client.incr(level_key))
+    redis_client.expire(level_key, 48 * 3600)
+    if level <= 1:
+        duration = 60
+    elif level == 2:
+        duration = 5 * 60
+    else:
+        duration = 60 * 60
+    _register_temp_block(actor, ip, domain, reason, level, duration)
+    redis_client.hset(f"abuse:block:meta:{actor}", mapping={"fail_count": str(total)})
+
+
+def _check_block(ip: str, domain: str) -> tuple[bool, int, str]:
+    actor = _actor_id(ip, domain)
+    if _is_hard_banned(actor):
+        return True, 0, actor
+    ttl = _temporary_block_ttl(actor)
+    if ttl > 0:
+        return True, ttl, actor
+    return False, 0, actor
+
+
+def _require_superadmin(session, db: Session) -> AdminUser:
+    row = db.scalar(select(AdminUser).where(AdminUser.username == session.username).limit(1))
+    if not row or not row.is_superadmin:
+        raise HTTPException(status_code=403, detail="superadmin required")
+    return row
+
+
 @app.middleware("http")
 async def capture_body(request: Request, call_next):
     limited = request.url.path.startswith("/v1/") or request.url.path.startswith("/admin/api/")
+    body = await request.body()
+    payload = _extract_request_payload(request, body)
+    domain, license_key = _extract_domain_and_license(payload)
+    ip = _client_ip(request)
+
+    if request.url.path.startswith("/v1/"):
+        blocked, ttl, actor = _check_block(ip, domain)
+        if blocked:
+            detail = "hard banned" if ttl == 0 else f"temporarily blocked for {ttl}s"
+            return JSONResponse(status_code=429, content={"detail": detail, "actor": actor})
+
     if limited and settings.rate_limit_per_minute > 0:
         key = _rate_limit_key(request)
         try:
@@ -167,18 +296,47 @@ async def capture_body(request: Request, call_next):
             if hits == 1:
                 redis_client.expire(key, 70)
             if hits > settings.rate_limit_per_minute:
+                actor = _actor_id(ip, domain)
+                rl_hits = int(redis_client.incr(f"abuse:rlhit:{actor}"))
+                redis_client.expire(f"abuse:rlhit:{actor}", 48 * 3600)
+                if rl_hits >= settings.rate_limit_hard_ban_hits:
+                    _register_hard_block(actor, ip, domain, "rate limit exceeded")
                 return JSONResponse(status_code=429, content={"detail": "rate limit exceeded"})
         except Exception:
-            # Fail-open on Redis errors to avoid false downtime.
+            pass
+
+    if license_key and settings.rate_limit_per_license_per_minute > 0:
+        per_key = f"rl:license:{license_key}:{int(time.time() // 60)}"
+        try:
+            lic_hits = int(redis_client.incr(per_key))
+            if lic_hits == 1:
+                redis_client.expire(per_key, 70)
+            redis_client.hincrby(f"stats:license:{license_key}", "total_calls", 1)
+            redis_client.hset(f"stats:license:{license_key}", "current_minute_calls", str(lic_hits))
+            redis_client.hset(f"stats:license:{license_key}", "updated_at", str(int(time.time())))
+            redis_client.sadd("stats:license:index", license_key)
+            if lic_hits > settings.rate_limit_per_license_per_minute:
+                return JSONResponse(status_code=429, content={"detail": "license rate limit exceeded"})
+        except Exception:
             pass
 
     request_id = uuid.uuid4().hex
     started = time.perf_counter()
     request.state.request_id = request_id
-    body = await request.body()
     request.state.raw_body = body
+    request.state.payload = payload
+    request.state.request_domain = domain
+    request.state.request_license_key = license_key
+    request.state.request_ip = ip
     response = await call_next(request)
     elapsed_ms = int((time.perf_counter() - started) * 1000)
+
+    if request.url.path.startswith("/v1/") and response.status_code in {401, 403}:
+        try:
+            _register_failure(ip, domain, "unauthorized request")
+        except Exception:
+            pass
+
     if request.url.path != "/health":
         try:
             with SessionLocal() as db:
@@ -346,8 +504,13 @@ def admin_api_logout(response: Response) -> dict:
 
 
 @app.get("/admin/api/session", response_model=AdminSessionInfoResponse)
-def admin_api_session(session=Depends(admin_session_dep)) -> AdminSessionInfoResponse:
-    return AdminSessionInfoResponse(username=session.username)
+def admin_api_session(session=Depends(admin_session_dep), db: Session = Depends(get_db)) -> AdminSessionInfoResponse:
+    row = db.scalar(select(AdminUser).where(AdminUser.username == session.username).limit(1))
+    return AdminSessionInfoResponse(
+        username=session.username,
+        is_superadmin=bool(row and row.is_superadmin),
+        twofa_enabled=bool(row and row.twofa_enabled),
+    )
 
 
 @app.post("/admin/api/license/generate", response_model=AdminLicenseGenerateResponse)
@@ -386,6 +549,71 @@ def admin_api_license_delete(
     db.delete(row)
     db.commit()
     return {"ok": True}
+
+
+@app.get("/admin/api/security/blocks", response_model=AdminBlockListResponse)
+def admin_api_security_blocks(
+    session=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> AdminBlockListResponse:
+    _require_superadmin(session, db)
+    items: list[AdminBlockItem] = []
+    actors = redis_client.smembers("abuse:block:index")
+    for actor in sorted(actors):
+        meta = redis_client.hgetall(f"abuse:block:meta:{actor}") or {}
+        hard = _is_hard_banned(actor)
+        ttl = _temporary_block_ttl(actor)
+        if not hard and ttl <= 0:
+            continue
+        items.append(
+            AdminBlockItem(
+                actor=actor,
+                ip=meta.get("ip", ""),
+                domain=meta.get("domain", ""),
+                mode="hard" if hard else "temp",
+                reason=meta.get("reason", ""),
+                fail_count=int(meta.get("fail_count", "0") or 0),
+                level=int(meta.get("level", "0") or 0),
+                expires_in_seconds=0 if hard else ttl,
+            )
+        )
+    return AdminBlockListResponse(items=items)
+
+
+@app.post("/admin/api/security/unblock")
+def admin_api_security_unblock(
+    payload: AdminBlockDeleteRequest,
+    session=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> dict:
+    _require_superadmin(session, db)
+    actor = payload.actor.strip()
+    redis_client.delete(f"abuse:block:active:{actor}")
+    redis_client.delete(f"abuse:block:hard:{actor}")
+    redis_client.delete(f"abuse:fail:{actor}")
+    redis_client.delete(f"abuse:level:{actor}")
+    redis_client.delete(f"abuse:rlhit:{actor}")
+    return {"ok": True}
+
+
+@app.get("/admin/api/security/license-stats", response_model=AdminLicenseRateStatsResponse)
+def admin_api_security_license_stats(
+    session=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> AdminLicenseRateStatsResponse:
+    _require_superadmin(session, db)
+    items: list[AdminLicenseRateStatsItem] = []
+    license_keys = redis_client.smembers("stats:license:index")
+    for license_key in sorted(license_keys):
+        stats = redis_client.hgetall(f"stats:license:{license_key}") or {}
+        items.append(
+            AdminLicenseRateStatsItem(
+                license_key=license_key,
+                total_calls=int(stats.get("total_calls", "0") or 0),
+                current_minute_calls=int(stats.get("current_minute_calls", "0") or 0),
+            )
+        )
+    return AdminLicenseRateStatsResponse(items=items)
 
 
 @app.get("/admin/api/user/list", response_model=AdminUserListResponse)
@@ -427,10 +655,7 @@ def admin_api_user_upsert(
         row.password_hash = hash_password(payload.password)
     row.is_active = 1 if payload.is_active else 0
     row.is_superadmin = 1 if payload.is_superadmin else 0
-    row.twofa_enabled = 1 if payload.twofa_enabled else 0
-    if payload.twofa_enabled:
-        row.twofa_secret = payload.twofa_secret.strip() or pyotp.random_base32()
-    else:
+    if not row.twofa_secret:
         row.twofa_secret = ""
     db.add(row)
     db.commit()
@@ -468,11 +693,13 @@ def admin_api_user_2fa_start(
     secret = pyotp.random_base32()
     issuer = "PayByQR Woo Backend"
     otpauth_url = pyotp.TOTP(secret).provisioning_uri(name=row.username, issuer_name=issuer)
+    qr_svg = _qr_svg_from_text(otpauth_url)
     redis_client.setex(_pending_2fa_key(row.username), 10 * 60, secret)
     return AdminTwoFaStartResponse(
         secret=secret,
         otpauth_url=otpauth_url,
-        qr_svg=_qr_svg_from_text(otpauth_url),
+        qr_svg=qr_svg,
+        qr_data_url="data:image/svg+xml;base64," + base64.b64encode(qr_svg.encode("utf-8")).decode("ascii"),
     )
 
 
@@ -555,27 +782,35 @@ def pbs_generate(
 @app.post("/v1/license/validate", response_model=LicenseValidateResponse)
 def license_validate(
     payload: LicenseValidateRequest,
+    request: Request,
     auth: AuthContext = Depends(_auth_dep),
     db: Session = Depends(get_db),
 ) -> LicenseValidateResponse:
     del auth
+    ip = _client_ip(request)
+    normalized_domain = _normalize_domain(payload.domain)
     license_row = db.scalar(
         select(License).where(License.license_key == payload.license_key).limit(1)
     )
     if not license_row:
+        _register_failure(ip, normalized_domain, "invalid license")
         return LicenseValidateResponse(valid=False, reason="invalid license")
 
     if license_row.status != "active":
+        _register_failure(ip, normalized_domain, "license not active")
         return LicenseValidateResponse(valid=False, reason="license not active")
 
     if license_row.expires_at and license_row.expires_at < datetime.now(timezone.utc):
+        _register_failure(ip, normalized_domain, "license expired")
         return LicenseValidateResponse(valid=False, reason="license expired")
 
-    requested_domain = _normalize_domain(payload.domain)
+    requested_domain = normalized_domain
     if not _domain_matches(license_row.domain, requested_domain):
+        _register_failure(ip, requested_domain, "domain mismatch")
         return LicenseValidateResponse(valid=False, reason="domain mismatch")
 
     if license_row.plugin_instance_id and license_row.plugin_instance_id != payload.plugin_instance_id:
+        _register_failure(ip, requested_domain, "instance mismatch")
         return LicenseValidateResponse(valid=False, reason="instance mismatch")
 
     changed = False

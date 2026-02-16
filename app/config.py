@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     admin_turnstile_site_key: str = ""
     admin_turnstile_secret_key: str = ""
     rate_limit_per_minute: int = 60
+    rate_limit_per_license_per_minute: int = 120
+    rate_limit_hard_ban_hits: int = 20
+    abuse_hard_ban_threshold: int = 30
 
     db_dsn: str = "postgresql+psycopg://pbs:change_me@db:5432/pbs"
     redis_url: str = "redis://redis:6379/0"

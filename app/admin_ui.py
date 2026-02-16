@@ -18,30 +18,11 @@ ADMIN_HTML = """<!doctype html>
       --shadow: 0 8px 24px rgba(17, 34, 68, 0.08);
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Segoe UI", Arial, sans-serif;
-      color: var(--text);
-      background: radial-gradient(circle at 10% 0%, #e7eefc 0, var(--bg) 48%);
-    }
+    body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; color: var(--text); background: radial-gradient(circle at 10% 0%, #e7eefc 0, var(--bg) 48%); }
     .hidden { display: none !important; }
 
-    .auth-screen {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .auth-card {
-      width: 100%;
-      max-width: 460px;
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      box-shadow: var(--shadow);
-      padding: 24px;
-    }
+    .auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .auth-card { width: 100%; max-width: 460px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 24px; }
     .auth-card h1 { margin: 0 0 8px; font-size: 26px; }
     .auth-card p { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
 
@@ -51,13 +32,7 @@ ADMIN_HTML = """<!doctype html>
     .sub { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
 
     .grid { display: grid; gap: 14px; grid-template-columns: repeat(12, 1fr); }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 14px;
-      box-shadow: var(--shadow);
-    }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--shadow); }
     .span-12 { grid-column: span 12; }
     .span-8 { grid-column: span 8; }
     .span-6 { grid-column: span 6; }
@@ -69,7 +44,7 @@ ADMIN_HTML = """<!doctype html>
     .field { display: grid; gap: 6px; min-width: 180px; margin-bottom: 10px; }
     .field label { font-size: 12px; color: var(--muted); }
 
-    input, select, button, textarea {
+    input, select, button {
       border-radius: 8px;
       border: 1px solid #b7c4de;
       padding: 10px 11px;
@@ -90,38 +65,17 @@ ADMIN_HTML = """<!doctype html>
     .status.ok { color: var(--ok); }
     .status.err { color: var(--danger); }
     .hint { color: var(--muted); font-size: 12px; }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      border: 1px solid #c6d1e8;
-      border-radius: 999px;
-      background: var(--primary-soft);
-      color: #234274;
-      padding: 4px 10px;
-      font-size: 12px;
-    }
+    .pill { display: inline-flex; align-items: center; border: 1px solid #c6d1e8; border-radius: 999px; background: var(--primary-soft); color: #234274; padding: 4px 10px; font-size: 12px; }
 
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { border-bottom: 1px solid #e9eef7; text-align: left; vertical-align: top; padding: 8px 6px; }
     th { background: #f7faff; font-weight: 600; }
     .mono { font-family: Consolas, monospace; font-size: 12px; }
     .tags { display: inline-flex; gap: 6px; align-items: center; }
-    .tag {
-      font-size: 11px;
-      padding: 2px 7px;
-      border-radius: 999px;
-      border: 1px solid #c9d4eb;
-      background: #f6f9ff;
-      color: #26406f;
-    }
-    .qr-box {
-      border: 1px dashed #bcc9e4;
-      border-radius: 10px;
-      padding: 10px;
-      max-width: 270px;
-      background: #fbfdff;
-    }
-    .qr-box svg { width: 100%; height: auto; }
+    .tag { font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid #c9d4eb; background: #f6f9ff; color: #26406f; }
+
+    .qr-wrap { border: 1px dashed #bcc9e4; border-radius: 10px; padding: 10px; width: 240px; background: #fbfdff; }
+    .qr-wrap img { width: 220px; height: 220px; object-fit: contain; display: block; margin: 0 auto; }
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
@@ -129,7 +83,7 @@ ADMIN_HTML = """<!doctype html>
   <div id="login_screen" class="auth-screen">
     <div class="auth-card">
       <h1>Pay By QR Admin</h1>
-      <p>Sign in to manage licenses and admin accounts.</p>
+      <p>Sign in to manage licenses and security settings.</p>
 
       <div class="field">
         <label for="username">Username</label>
@@ -144,7 +98,6 @@ ADMIN_HTML = """<!doctype html>
         <input id="otp_code" class="slim" type="text" maxlength="12" placeholder="123456">
       </div>
       <div id="turnstile_box" class="hidden"></div>
-      <div id="turnstile_hint" class="hint"></div>
 
       <div class="row" style="margin-top: 14px;">
         <button id="btn_login" type="button">Login</button>
@@ -160,7 +113,7 @@ ADMIN_HTML = """<!doctype html>
         <div class="toolbar">
           <div class="row">
             <div id="session_user" class="pill">Logged in</div>
-            <span class="hint">Rate limit enabled per IP.</span>
+            <div id="superadmin_banner" class="pill hidden">Superadmin</div>
           </div>
           <div class="row">
             <button id="btn_refresh_all" type="button" class="secondary btn-xs">Refresh Data</button>
@@ -179,14 +132,7 @@ ADMIN_HTML = """<!doctype html>
         </div>
         <table>
           <thead>
-            <tr>
-              <th>License</th>
-              <th>Status</th>
-              <th>Domain</th>
-              <th>Instance</th>
-              <th>Expires</th>
-              <th>Actions</th>
-            </tr>
+            <tr><th>License</th><th>Status</th><th>Domain</th><th>Instance</th><th>Expires</th><th>Actions</th></tr>
           </thead>
           <tbody id="license_rows"></tbody>
         </table>
@@ -194,11 +140,10 @@ ADMIN_HTML = """<!doctype html>
 
       <div class="card span-4">
         <h2>License Form</h2>
-        <p class="sub">Create/update one license key.</p>
         <div class="field">
           <label for="license_key">License key</label>
           <div class="row">
-            <input id="license_key" type="text" placeholder="xxxx-xxxx-xxxx" class="wide">
+            <input id="license_key" type="text" placeholder="XXXX-XXXX-XXXX" class="wide">
             <button id="btn_license_generate" type="button" class="ghost">Generate</button>
           </div>
         </div>
@@ -211,7 +156,7 @@ ADMIN_HTML = """<!doctype html>
           </select>
         </div>
         <div class="field">
-          <label for="domain">Domain</label>
+          <label for="domain">Domain(s)</label>
           <input id="domain" type="text" placeholder="example.com, www.example.com">
         </div>
         <div class="field">
@@ -235,7 +180,7 @@ ADMIN_HTML = """<!doctype html>
 
       <div class="card span-6">
         <h2>Admin Accounts</h2>
-        <p class="sub">Edit account flags or disable login access.</p>
+        <p class="sub">2FA can be enabled only by the account owner.</p>
         <div class="row">
           <div class="field">
             <label for="u_username">Username</label>
@@ -245,40 +190,30 @@ ADMIN_HTML = """<!doctype html>
             <label for="u_password">Password</label>
             <input id="u_password" type="password" placeholder="leave empty to keep">
           </div>
-          <div class="field">
-            <label for="u_twofa_secret">TOTP secret (manual)</label>
-            <input id="u_twofa_secret" type="text" placeholder="optional">
-          </div>
         </div>
         <div class="row">
           <label><input id="u_active" type="checkbox" checked> Active login</label>
           <label><input id="u_superadmin" type="checkbox"> Superadmin</label>
-          <label><input id="u_twofa" type="checkbox"> 2FA enabled</label>
           <button id="btn_user_save" type="button">Save User</button>
           <button id="btn_user_clear" type="button" class="ghost">Clear</button>
         </div>
         <table>
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Flags</th>
-              <th>2FA</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
+          <thead><tr><th>User</th><th>Flags</th><th>2FA</th><th>Actions</th></tr></thead>
           <tbody id="user_rows"></tbody>
         </table>
       </div>
 
       <div class="card span-6">
         <h2>My Security</h2>
-        <p class="sub">Enable 2FA by scanning QR in authenticator app, then confirm with one-time code.</p>
+        <p class="sub">Scan QR in authenticator app and confirm code.</p>
         <div id="my_security_state" class="hint">Loading...</div>
-        <div class="row">
+
+        <div id="twofa_start_area" class="row" style="margin-top: 10px;">
           <button id="btn_2fa_start" type="button">Start 2FA Setup</button>
         </div>
+
         <div id="twofa_setup" class="hidden">
-          <div class="qr-box" id="twofa_qr"></div>
+          <div class="qr-wrap"><img id="twofa_qr_img" alt="2FA QR"></div>
           <div class="field">
             <label for="twofa_secret">Secret</label>
             <input id="twofa_secret" type="text" readonly>
@@ -291,17 +226,41 @@ ADMIN_HTML = """<!doctype html>
             <button id="btn_2fa_confirm" type="button">Confirm & Enable</button>
           </div>
         </div>
-        <hr>
-        <div class="field">
-          <label for="disable_password">Disable 2FA: account password</label>
-          <input id="disable_password" type="password">
+
+        <div id="twofa_disable_area" class="hidden">
+          <hr>
+          <div class="field">
+            <label for="disable_password">Disable 2FA: account password</label>
+            <input id="disable_password" type="password">
+          </div>
+          <div class="field">
+            <label for="disable_otp">Disable 2FA: current OTP code</label>
+            <input id="disable_otp" type="text" class="slim" maxlength="12">
+          </div>
+          <div class="row">
+            <button id="btn_2fa_disable" type="button" class="danger">Disable 2FA</button>
+          </div>
         </div>
-        <div class="field">
-          <label for="disable_otp">Disable 2FA: current OTP code</label>
-          <input id="disable_otp" type="text" class="slim" maxlength="12">
-        </div>
-        <div class="row">
-          <button id="btn_2fa_disable" type="button" class="danger">Disable 2FA</button>
+      </div>
+
+      <div id="superadmin_security" class="card span-12 hidden">
+        <h2>Security Dashboard</h2>
+        <p class="sub" id="turnstile_status_text"></p>
+        <div class="grid">
+          <div class="span-6">
+            <h3>Blocked Actors</h3>
+            <table>
+              <thead><tr><th>Actor</th><th>Mode</th><th>Reason</th><th>Expires</th><th>Action</th></tr></thead>
+              <tbody id="blocked_rows"></tbody>
+            </table>
+          </div>
+          <div class="span-6">
+            <h3>License Rate Stats</h3>
+            <table>
+              <thead><tr><th>License</th><th>Total calls</th><th>Current minute</th></tr></thead>
+              <tbody id="license_stats_rows"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -312,6 +271,8 @@ let loginOptions = { twofa_required: false, turnstile_required: false, turnstile
 let turnstileWidgetId = null;
 let searchTimer = null;
 let sessionUser = "";
+let isSuperadmin = false;
+let myTwoFaEnabled = false;
 
 function setStatus(elId, msg, ok=true) {
   const el = document.getElementById(elId);
@@ -326,52 +287,31 @@ async function api(path, options = {}) {
   return body;
 }
 
-function toIsoFromLocal(dateValue) {
-  if (!dateValue) return null;
-  const dt = new Date(dateValue);
-  if (Number.isNaN(dt.getTime())) return null;
-  return dt.toISOString();
-}
-
-function toLocalInput(isoValue) {
-  if (!isoValue) return "";
-  return String(isoValue).slice(0, 16);
-}
-
-function resetTurnstile() {
-  if (window.turnstile && turnstileWidgetId !== null) {
-    try { window.turnstile.reset(turnstileWidgetId); } catch (err) {}
-  }
-}
+function toIsoFromLocal(dateValue) { if (!dateValue) return null; const dt = new Date(dateValue); return Number.isNaN(dt.getTime()) ? null : dt.toISOString(); }
+function toLocalInput(isoValue) { return isoValue ? String(isoValue).slice(0, 16) : ""; }
+function resetTurnstile() { if (window.turnstile && turnstileWidgetId !== null) { try { window.turnstile.reset(turnstileWidgetId); } catch (err) {} } }
 
 function renderTurnstile() {
   const box = document.getElementById("turnstile_box");
-  const hint = document.getElementById("turnstile_hint");
   if (!loginOptions.turnstile_required || !loginOptions.turnstile_site_key || !window.turnstile) {
     box.classList.add("hidden");
     box.innerHTML = "";
     turnstileWidgetId = null;
-    hint.textContent = "Cloudflare Turnstile is disabled. Set ADMIN_TURNSTILE_SITE_KEY and ADMIN_TURNSTILE_SECRET_KEY in .env to enable it.";
     return;
   }
-  hint.textContent = "Cloudflare Turnstile is enabled.";
   box.classList.remove("hidden");
   box.innerHTML = '<div id="turnstile_widget"></div>';
-  turnstileWidgetId = window.turnstile.render("#turnstile_widget", {
-    sitekey: loginOptions.turnstile_site_key,
-    theme: "light"
-  });
+  turnstileWidgetId = window.turnstile.render("#turnstile_widget", { sitekey: loginOptions.turnstile_site_key, theme: "light" });
 }
 
-function getTurnstileToken() {
-  if (!window.turnstile || turnstileWidgetId === null) return "";
-  return window.turnstile.getResponse(turnstileWidgetId) || "";
-}
+function getTurnstileToken() { return (!window.turnstile || turnstileWidgetId === null) ? "" : (window.turnstile.getResponse(turnstileWidgetId) || ""); }
+function updateOtpVisibility() { document.getElementById("otp_field").classList.toggle("hidden", !loginOptions.twofa_required); }
 
-function updateOtpVisibility() {
-  const otpField = document.getElementById("otp_field");
-  if (loginOptions.twofa_required) otpField.classList.remove("hidden");
-  else otpField.classList.add("hidden");
+function updateTwoFaUiState() {
+  document.getElementById("my_security_state").textContent = myTwoFaEnabled ? "2FA is currently enabled." : "2FA is currently disabled.";
+  document.getElementById("twofa_start_area").classList.toggle("hidden", myTwoFaEnabled);
+  document.getElementById("twofa_disable_area").classList.toggle("hidden", !myTwoFaEnabled);
+  if (myTwoFaEnabled) document.getElementById("twofa_setup").classList.add("hidden");
 }
 
 async function refreshLoginOptions() {
@@ -385,11 +325,19 @@ async function refreshLoginOptions() {
   }
 }
 
-function showApp(username) {
-  sessionUser = username;
-  document.getElementById("login_screen").classList.add("hidden");
-  document.getElementById("app").classList.remove("hidden");
-  document.getElementById("session_user").textContent = "Logged in as: " + username;
+function applySessionInfo(data) {
+  sessionUser = data.username;
+  isSuperadmin = !!data.is_superadmin;
+  myTwoFaEnabled = !!data.twofa_enabled;
+  document.getElementById("session_user").textContent = "Logged in as: " + sessionUser;
+  document.getElementById("superadmin_banner").classList.toggle("hidden", !isSuperadmin);
+  document.getElementById("superadmin_security").classList.toggle("hidden", !isSuperadmin);
+  document.getElementById("turnstile_status_text").textContent = isSuperadmin
+    ? (loginOptions.turnstile_required
+      ? "Cloudflare Turnstile is enabled in env configuration."
+      : "Cloudflare Turnstile is disabled. Set ADMIN_TURNSTILE_SITE_KEY and ADMIN_TURNSTILE_SECRET_KEY in .env.")
+    : "";
+  updateTwoFaUiState();
 }
 
 async function login() {
@@ -400,12 +348,11 @@ async function login() {
       otp_code: document.getElementById("otp_code").value.trim(),
       turnstile_token: getTurnstileToken()
     };
-    const data = await api("/admin/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    showApp(data.username);
+    await api("/admin/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const session = await api("/admin/api/session");
+    document.getElementById("login_screen").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    applySessionInfo(session);
     setStatus("status", "Logged in.");
     await loadAll();
   } catch (err) {
@@ -414,15 +361,15 @@ async function login() {
   }
 }
 
-async function logout() {
-  try { await api("/admin/api/logout", { method: "POST" }); } catch (err) {}
-  location.reload();
-}
+async function logout() { try { await api("/admin/api/logout", { method: "POST" }); } catch (err) {} location.reload(); }
 
 async function checkSession() {
   try {
-    const data = await api("/admin/api/session");
-    showApp(data.username);
+    const session = await api("/admin/api/session");
+    document.getElementById("login_screen").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    await refreshLoginOptions();
+    applySessionInfo(session);
     await loadAll();
   } catch (err) {
     await refreshLoginOptions();
@@ -437,7 +384,6 @@ function clearLicenseForm() {
   document.getElementById("expires_at").value = "";
   document.getElementById("note").value = "";
 }
-
 function fillLicenseForm(item) {
   document.getElementById("license_key").value = item.license_key || "";
   document.getElementById("license_status").value = item.status || "active";
@@ -452,9 +398,7 @@ async function generateLicenseKey() {
     const data = await api("/admin/api/license/generate", { method: "POST" });
     document.getElementById("license_key").value = data.license_key || "";
     setStatus("app_status", "License key generated.");
-  } catch (err) {
-    setStatus("app_status", err.message, false);
-  }
+  } catch (err) { setStatus("app_status", err.message, false); }
 }
 
 async function upsertLicense() {
@@ -468,41 +412,24 @@ async function upsertLicense() {
       note: document.getElementById("note").value.trim()
     };
     if (!payload.license_key) throw new Error("License key is required.");
-    await api("/admin/api/license/upsert", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    await api("/admin/api/license/upsert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     setStatus("app_status", "License saved.");
     await loadLicenses();
-  } catch (err) {
-    setStatus("app_status", err.message, false);
-  }
+  } catch (err) { setStatus("app_status", err.message, false); }
 }
 
 async function deleteLicense(licenseKey) {
-  if (!licenseKey) return;
-  if (!confirm("Delete license '" + licenseKey + "'?")) return;
+  if (!licenseKey || !confirm("Delete license '" + licenseKey + "'?")) return;
   try {
-    await api("/admin/api/license/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ license_key: licenseKey })
-    });
+    await api("/admin/api/license/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ license_key: licenseKey }) });
     setStatus("app_status", "License deleted.");
     if (document.getElementById("license_key").value.trim() === licenseKey) clearLicenseForm();
     await loadLicenses();
-  } catch (err) {
-    setStatus("app_status", err.message, false);
-  }
+  } catch (err) { setStatus("app_status", err.message, false); }
 }
-
 function deleteLicenseFromForm() {
   const key = document.getElementById("license_key").value.trim();
-  if (!key) {
-    setStatus("app_status", "Select or enter a license key first.", false);
-    return;
-  }
+  if (!key) { setStatus("app_status", "Select or enter a license key first.", false); return; }
   deleteLicense(key);
 }
 
@@ -520,20 +447,15 @@ async function loadLicenses() {
       <td></td>
       <td class="mono"></td>
       <td></td>
-      <td class="tags">
-        <button type="button" class="btn-xs ghost">Edit</button>
-        <button type="button" class="btn-xs danger">X</button>
-      </td>
+      <td class="tags"><button type="button" class="btn-xs ghost">Edit</button><button type="button" class="btn-xs danger">X</button></td>
     `;
     tr.children[0].textContent = item.license_key || "";
     tr.children[1].querySelector("span").textContent = item.status || "";
     tr.children[2].textContent = item.domain || "";
     tr.children[3].textContent = item.plugin_instance_id || "";
     tr.children[4].textContent = item.expires_at || "";
-    const editBtn = tr.children[5].children[0];
-    const delBtn = tr.children[5].children[1];
-    editBtn.addEventListener("click", () => fillLicenseForm(item));
-    delBtn.addEventListener("click", () => deleteLicense(item.license_key || ""));
+    tr.children[5].children[0].addEventListener("click", () => fillLicenseForm(item));
+    tr.children[5].children[1].addEventListener("click", () => deleteLicense(item.license_key || ""));
     rows.appendChild(tr);
   }
 }
@@ -541,19 +463,14 @@ async function loadLicenses() {
 function clearUserForm() {
   document.getElementById("u_username").value = "";
   document.getElementById("u_password").value = "";
-  document.getElementById("u_twofa_secret").value = "";
   document.getElementById("u_active").checked = true;
   document.getElementById("u_superadmin").checked = false;
-  document.getElementById("u_twofa").checked = false;
 }
-
 function fillUserForm(item) {
   document.getElementById("u_username").value = item.username || "";
   document.getElementById("u_password").value = "";
-  document.getElementById("u_twofa_secret").value = "";
   document.getElementById("u_active").checked = !!item.is_active;
   document.getElementById("u_superadmin").checked = !!item.is_superadmin;
-  document.getElementById("u_twofa").checked = !!item.twofa_enabled;
 }
 
 async function upsertUser() {
@@ -563,51 +480,33 @@ async function upsertUser() {
       password: document.getElementById("u_password").value,
       is_active: document.getElementById("u_active").checked,
       is_superadmin: document.getElementById("u_superadmin").checked,
-      twofa_enabled: document.getElementById("u_twofa").checked,
-      twofa_secret: document.getElementById("u_twofa_secret").value.trim()
+      twofa_enabled: false,
+      twofa_secret: ""
     };
     if (!payload.username) throw new Error("Username is required.");
-    await api("/admin/api/user/upsert", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    await api("/admin/api/user/upsert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     setStatus("app_status", "User saved.");
     document.getElementById("u_password").value = "";
     await loadUsers();
-  } catch (err) {
-    setStatus("app_status", err.message, false);
-  }
+  } catch (err) { setStatus("app_status", err.message, false); }
 }
 
 async function setUserActive(username, isActive) {
   try {
-    await api("/admin/api/user/set-active", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: username, is_active: isActive })
-    });
+    await api("/admin/api/user/set-active", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: username, is_active: isActive }) });
     setStatus("app_status", isActive ? "User enabled." : "User disabled.");
     await loadUsers();
-  } catch (err) {
-    setStatus("app_status", err.message, false);
-  }
+  } catch (err) { setStatus("app_status", err.message, false); }
 }
 
 async function deleteUser(username) {
   if (!confirm("Delete user '" + username + "'?")) return;
   try {
-    await api("/admin/api/user/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: username })
-    });
+    await api("/admin/api/user/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: username }) });
     setStatus("app_status", "User deleted.");
     if (document.getElementById("u_username").value.trim() === username) clearUserForm();
     await loadUsers();
-  } catch (err) {
-    setStatus("app_status", err.message, false);
-  }
+  } catch (err) { setStatus("app_status", err.message, false); }
 }
 
 async function loadUsers() {
@@ -617,17 +516,12 @@ async function loadUsers() {
   let mine = null;
   for (const item of data.items || []) {
     if (item.username === sessionUser) mine = item;
-
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="mono"></td>
       <td></td>
       <td></td>
-      <td class="tags">
-        <button type="button" class="btn-xs ghost">Edit</button>
-        <button type="button" class="btn-xs secondary"></button>
-        <button type="button" class="btn-xs danger">Delete</button>
-      </td>
+      <td class="tags"><button type="button" class="btn-xs ghost">Edit</button><button type="button" class="btn-xs secondary"></button><button type="button" class="btn-xs danger">Delete</button></td>
     `;
     tr.children[0].textContent = item.username || "";
     tr.children[1].textContent = (item.is_active ? "active" : "inactive") + " / " + (item.is_superadmin ? "superadmin" : "standard");
@@ -637,93 +531,109 @@ async function loadUsers() {
     const toggleBtn = tr.children[3].children[1];
     const delBtn = tr.children[3].children[2];
     toggleBtn.textContent = item.is_active ? "Disable" : "Enable";
-
     editBtn.addEventListener("click", () => fillUserForm(item));
     toggleBtn.addEventListener("click", () => setUserActive(item.username, !item.is_active));
     delBtn.addEventListener("click", () => deleteUser(item.username));
-
-    if (item.username === sessionUser) {
-      toggleBtn.disabled = true;
-      toggleBtn.textContent = "Current";
-    }
+    if (item.username === sessionUser) { toggleBtn.disabled = true; toggleBtn.textContent = "Current"; }
     rows.appendChild(tr);
   }
-  refreshMySecurityState(mine);
-}
-
-function refreshMySecurityState(mine) {
-  const state = document.getElementById("my_security_state");
-  if (!mine) {
-    state.textContent = "Unable to load your account state.";
-    return;
+  if (mine) {
+    myTwoFaEnabled = !!mine.twofa_enabled;
+    updateTwoFaUiState();
   }
-  state.textContent = mine.twofa_enabled ? "2FA is currently enabled." : "2FA is currently disabled.";
 }
 
 async function startTwoFaSetup() {
   try {
     const data = await api("/admin/api/user/2fa/start", { method: "POST" });
     document.getElementById("twofa_setup").classList.remove("hidden");
-    document.getElementById("twofa_qr").innerHTML = data.qr_svg || "";
+    document.getElementById("twofa_qr_img").src = data.qr_data_url || "";
     document.getElementById("twofa_secret").value = data.secret || "";
     setStatus("app_status", "2FA setup started. Scan QR and confirm code.");
-  } catch (err) {
-    setStatus("app_status", err.message, false);
-  }
+  } catch (err) { setStatus("app_status", err.message, false); }
 }
 
 async function confirmTwoFaSetup() {
   try {
     const otp = document.getElementById("twofa_code").value.trim();
-    await api("/admin/api/user/2fa/confirm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ otp_code: otp })
-    });
+    await api("/admin/api/user/2fa/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ otp_code: otp }) });
     document.getElementById("twofa_setup").classList.add("hidden");
     document.getElementById("twofa_code").value = "";
     setStatus("app_status", "2FA enabled successfully.");
+    myTwoFaEnabled = true;
+    updateTwoFaUiState();
     await loadUsers();
-  } catch (err) {
-    setStatus("app_status", err.message, false);
-  }
+  } catch (err) { setStatus("app_status", err.message, false); }
 }
 
 async function disableTwoFa() {
   try {
-    const payload = {
-      password: document.getElementById("disable_password").value,
-      otp_code: document.getElementById("disable_otp").value.trim()
-    };
-    await api("/admin/api/user/2fa/disable", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    const payload = { password: document.getElementById("disable_password").value, otp_code: document.getElementById("disable_otp").value.trim() };
+    await api("/admin/api/user/2fa/disable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     document.getElementById("disable_password").value = "";
     document.getElementById("disable_otp").value = "";
     document.getElementById("twofa_setup").classList.add("hidden");
     setStatus("app_status", "2FA disabled.");
+    myTwoFaEnabled = false;
+    updateTwoFaUiState();
     await loadUsers();
-  } catch (err) {
-    setStatus("app_status", err.message, false);
+  } catch (err) { setStatus("app_status", err.message, false); }
+}
+
+async function loadBlockedActors() {
+  if (!isSuperadmin) return;
+  const data = await api("/admin/api/security/blocks");
+  const rows = document.getElementById("blocked_rows");
+  rows.innerHTML = "";
+  for (const item of data.items || []) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="mono"></td><td></td><td></td><td></td><td><button type="button" class="btn-xs danger">Unblock</button></td>`;
+    tr.children[0].textContent = item.actor;
+    tr.children[1].textContent = item.mode;
+    tr.children[2].textContent = item.reason;
+    tr.children[3].textContent = item.mode === "hard" ? "never" : String(item.expires_in_seconds) + "s";
+    tr.children[4].children[0].addEventListener("click", () => unblockActor(item.actor));
+    rows.appendChild(tr);
+  }
+}
+
+async function unblockActor(actor) {
+  try {
+    await api("/admin/api/security/unblock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actor: actor }) });
+    setStatus("app_status", "Actor unblocked.");
+    await loadBlockedActors();
+  } catch (err) { setStatus("app_status", err.message, false); }
+}
+
+async function loadLicenseStats() {
+  if (!isSuperadmin) return;
+  const data = await api("/admin/api/security/license-stats");
+  const rows = document.getElementById("license_stats_rows");
+  rows.innerHTML = "";
+  for (const item of data.items || []) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="mono"></td><td></td><td></td>`;
+    tr.children[0].textContent = item.license_key;
+    tr.children[1].textContent = String(item.total_calls);
+    tr.children[2].textContent = String(item.current_minute_calls);
+    rows.appendChild(tr);
   }
 }
 
 function debounceLoadLicenses() {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    loadLicenses().catch((err) => setStatus("app_status", err.message, false));
-  }, 250);
+  searchTimer = setTimeout(() => { loadLicenses().catch((err) => setStatus("app_status", err.message, false)); }, 250);
 }
 
 async function loadAll() {
   try {
     await loadLicenses();
     await loadUsers();
-  } catch (err) {
-    setStatus("app_status", err.message, false);
-  }
+    if (isSuperadmin) {
+      await loadBlockedActors();
+      await loadLicenseStats();
+    }
+  } catch (err) { setStatus("app_status", err.message, false); }
 }
 
 function bindEvents() {

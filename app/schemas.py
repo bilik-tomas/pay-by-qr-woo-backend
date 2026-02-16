@@ -138,6 +138,8 @@ class AdminLoginResponse(BaseModel):
 
 class AdminSessionInfoResponse(BaseModel):
     username: str
+    is_superadmin: bool = False
+    twofa_enabled: bool = False
 
 
 class AdminLoginOptionsResponse(BaseModel):
@@ -189,6 +191,7 @@ class AdminTwoFaStartResponse(BaseModel):
     secret: str
     otpauth_url: str
     qr_svg: str
+    qr_data_url: str = ""
 
 
 class AdminTwoFaConfirmRequest(BaseModel):
@@ -198,3 +201,32 @@ class AdminTwoFaConfirmRequest(BaseModel):
 class AdminTwoFaDisableRequest(BaseModel):
     password: str = Field(min_length=1, max_length=255)
     otp_code: str = Field(default="", max_length=12)
+
+
+class AdminBlockItem(BaseModel):
+    actor: str
+    ip: str
+    domain: str
+    mode: str
+    reason: str
+    fail_count: int
+    level: int
+    expires_in_seconds: int
+
+
+class AdminBlockListResponse(BaseModel):
+    items: list[AdminBlockItem]
+
+
+class AdminBlockDeleteRequest(BaseModel):
+    actor: str = Field(min_length=3, max_length=255)
+
+
+class AdminLicenseRateStatsItem(BaseModel):
+    license_key: str
+    total_calls: int
+    current_minute_calls: int
+
+
+class AdminLicenseRateStatsResponse(BaseModel):
+    items: list[AdminLicenseRateStatsItem]
