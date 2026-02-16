@@ -321,8 +321,8 @@ function updateTwoFaUiState() {
 
 function csvEscape(value) {
   const s = String(value ?? "");
-  if (s.includes(",") || s.includes("\"") || s.includes("\\n")) {
-    return "\"" + s.replaceAll("\"", "\"\"") + "\"";
+  if (s.includes(",") || s.includes("\\\"") || s.includes("\\n")) {
+    return "\\\"" + s.replaceAll("\\\"", "\\\"\\\"") + "\\\"";
   }
   return s;
 }
