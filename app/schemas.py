@@ -55,6 +55,8 @@ class AdminLicenseUpsertRequest(BaseModel):
     status: str = Field(default="active", min_length=4, max_length=16)
     domain: str = Field(default="", max_length=255)
     plugin_instance_id: str = Field(default="", max_length=128)
+    daily_qr_limit: int = Field(default=0, ge=0, le=1000000)
+    monthly_qr_limit: int = Field(default=0, ge=0, le=1000000)
     expires_at: datetime | None = None
     note: str = Field(default="", max_length=255)
 
@@ -76,6 +78,8 @@ class AdminLicenseItem(BaseModel):
     status: str
     domain: str
     plugin_instance_id: str
+    daily_qr_limit: int = 0
+    monthly_qr_limit: int = 0
     expires_at: datetime | None = None
     note: str
     created_at: datetime

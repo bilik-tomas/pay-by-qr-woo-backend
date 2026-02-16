@@ -24,6 +24,8 @@ class License(Base):
     domain: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     plugin_instance_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    daily_qr_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    monthly_qr_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     note: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(

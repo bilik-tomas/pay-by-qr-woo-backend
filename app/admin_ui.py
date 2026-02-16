@@ -155,7 +155,7 @@ ADMIN_HTML = """<!doctype html>
         </div>
         <table>
           <thead>
-            <tr><th>License</th><th>Status</th><th>Domain</th><th>Instance</th><th>Expires</th><th>Actions</th></tr>
+            <tr><th>License</th><th>Status</th><th>Domain</th><th>Instance</th><th>QR limits</th><th>Expires</th><th>Actions</th></tr>
           </thead>
           <tbody id="license_rows"></tbody>
         </table>
@@ -185,6 +185,16 @@ ADMIN_HTML = """<!doctype html>
         <div class="field">
           <label for="plugin_instance_id">Plugin instance ID</label>
           <input id="plugin_instance_id" type="text" placeholder="optional">
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="daily_qr_limit">Daily QR limit</label>
+            <input id="daily_qr_limit" type="number" min="0" step="1" placeholder="0 = unlimited">
+          </div>
+          <div class="field">
+            <label for="monthly_qr_limit">Monthly QR limit</label>
+            <input id="monthly_qr_limit" type="number" min="0" step="1" placeholder="0 = unlimited">
+          </div>
         </div>
         <div class="field">
           <label for="expires_at">Expires at</label>
@@ -599,6 +609,8 @@ function clearLicenseForm() {
   document.getElementById("license_status").value = "active";
   document.getElementById("domain").value = "";
   document.getElementById("plugin_instance_id").value = "";
+  document.getElementById("daily_qr_limit").value = "0";
+  document.getElementById("monthly_qr_limit").value = "0";
   document.getElementById("expires_at").value = "";
   document.getElementById("note").value = "";
 }
@@ -607,6 +619,8 @@ function fillLicenseForm(item) {
   document.getElementById("license_status").value = item.status || "active";
   document.getElementById("domain").value = item.domain || "";
   document.getElementById("plugin_instance_id").value = item.plugin_instance_id || "";
+  document.getElementById("daily_qr_limit").value = String(item.daily_qr_limit ?? 0);
+  document.getElementById("monthly_qr_limit").value = String(item.monthly_qr_limit ?? 0);
   document.getElementById("expires_at").value = toLocalInput(item.expires_at);
   document.getElementById("note").value = item.note || "";
 }
@@ -626,10 +640,14 @@ async function upsertLicense() {
       status: document.getElementById("license_status").value,
       domain: document.getElementById("domain").value.trim(),
       plugin_instance_id: document.getElementById("plugin_instance_id").value.trim(),
+      daily_qr_limit: parseInt(document.getElementById("daily_qr_limit").value || "0", 10),
+      monthly_qr_limit: parseInt(document.getElementById("monthly_qr_limit").value || "0", 10),
       expires_at: toIsoFromLocal(document.getElementById("expires_at").value),
       note: document.getElementById("note").value.trim()
     };
     if (!payload.license_key) throw new Error("License key is required.");
+    if (Number.isNaN(payload.daily_qr_limit) || payload.daily_qr_limit < 0) throw new Error("Daily QR limit must be 0 or higher.");
+    if (Number.isNaN(payload.monthly_qr_limit) || payload.monthly_qr_limit < 0) throw new Error("Monthly QR limit must be 0 or higher.");
     await api("/admin/api/license/upsert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     setStatus("app_status", "License saved.");
     await loadLicenses();
@@ -664,6 +682,7 @@ async function loadLicenses() {
       <td><span class="tag"></span></td>
       <td></td>
       <td class="mono"></td>
+      <td class="mono"></td>
       <td></td>
       <td class="tags"><button type="button" class="btn-xs ghost">Edit</button><button type="button" class="btn-xs danger">X</button></td>
     `;
@@ -671,9 +690,10 @@ async function loadLicenses() {
     tr.children[1].querySelector("span").textContent = item.status || "";
     tr.children[2].textContent = item.domain || "";
     tr.children[3].textContent = item.plugin_instance_id || "";
-    tr.children[4].textContent = item.expires_at || "";
-    tr.children[5].children[0].addEventListener("click", () => fillLicenseForm(item));
-    tr.children[5].children[1].addEventListener("click", () => deleteLicense(item.license_key || ""));
+    tr.children[4].textContent = (item.daily_qr_limit ?? 0) + " / " + (item.monthly_qr_limit ?? 0);
+    tr.children[5].textContent = item.expires_at || "";
+    tr.children[6].children[0].addEventListener("click", () => fillLicenseForm(item));
+    tr.children[6].children[1].addEventListener("click", () => deleteLicense(item.license_key || ""));
     rows.appendChild(tr);
   }
 }

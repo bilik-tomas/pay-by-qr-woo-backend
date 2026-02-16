@@ -234,6 +234,43 @@ def _extract_domain_and_license(payload: dict[str, Any]) -> tuple[str, str]:
     return domain, license_key
 
 
+def _enforce_license_qr_limits(request: Request, db: Session) -> None:
+    license_key = str(getattr(request.state, "request_license_key", "") or "").strip()
+    if not license_key:
+        return
+
+    license_row = db.scalar(select(License).where(License.license_key == license_key).limit(1))
+    if not license_row:
+        return
+
+    now = datetime.now(timezone.utc)
+    day_key = now.strftime("%Y%m%d")
+    month_key = now.strftime("%Y%m")
+    daily_counter_key = f"quota:license:{license_key}:day:{day_key}"
+    monthly_counter_key = f"quota:license:{license_key}:month:{month_key}"
+
+    if int(license_row.daily_qr_limit or 0) > 0:
+        current_daily = int(redis_client.get(daily_counter_key) or "0")
+        if current_daily >= int(license_row.daily_qr_limit):
+            raise HTTPException(status_code=429, detail="daily license QR limit exceeded")
+
+    if int(license_row.monthly_qr_limit or 0) > 0:
+        current_monthly = int(redis_client.get(monthly_counter_key) or "0")
+        if current_monthly >= int(license_row.monthly_qr_limit):
+            raise HTTPException(status_code=429, detail="monthly license QR limit exceeded")
+
+    daily_hits = int(redis_client.incr(daily_counter_key))
+    if daily_hits == 1:
+        redis_client.expire(daily_counter_key, 3 * 24 * 3600)
+
+    monthly_hits = int(redis_client.incr(monthly_counter_key))
+    if monthly_hits == 1:
+        redis_client.expire(monthly_counter_key, 45 * 24 * 3600)
+
+    redis_client.hset(f"stats:license:{license_key}", "daily_qr_calls", str(daily_hits))
+    redis_client.hset(f"stats:license:{license_key}", "monthly_qr_calls", str(monthly_hits))
+
+
 def _is_hard_banned(actor: str) -> bool:
     return bool(redis_client.exists(f"abuse:block:hard:{actor}"))
 
@@ -889,9 +926,13 @@ def admin_api_preview_pbs(
 def pbs_generate(
     payload: PBSGenerateRequest,
     auth: AuthContext = Depends(_auth_dep),
+    request: Request = None,
+    db: Session = Depends(get_db),
 ) -> PBSGenerateResponse:
     del auth
     try:
+        if request is not None:
+            _enforce_license_qr_limits(request, db)
         pbs_payload = generate_payload(payload)
         qr_svg = payload_to_svg(pbs_payload)
         qr_png_base64 = payload_to_png_base64(pbs_payload)
@@ -917,9 +958,13 @@ def pbs_generate_png(
     subtitle: str = "Naskenujte kod vo svojej bankovej aplikacii",
     brand: str = "PAY by square",
     auth: AuthContext = Depends(_auth_dep),
+    request: Request = None,
+    db: Session = Depends(get_db),
 ) -> Response:
     del auth
     try:
+        if request is not None:
+            _enforce_license_qr_limits(request, db)
         pbs_payload = generate_payload(payload)
         safe_size = max(220, min(900, int(size)))
         safe_text_size = max(12, min(42, int(text_size)))
@@ -1011,6 +1056,8 @@ def admin_license_upsert(
     license_row.status = payload.status
     license_row.domain = _normalize_domain_list(payload.domain)
     license_row.plugin_instance_id = payload.plugin_instance_id
+    license_row.daily_qr_limit = int(payload.daily_qr_limit)
+    license_row.monthly_qr_limit = int(payload.monthly_qr_limit)
     license_row.expires_at = payload.expires_at
     license_row.note = payload.note
     db.add(license_row)
@@ -1045,6 +1092,8 @@ def admin_license_list(
                 status=row.status,
                 domain=row.domain,
                 plugin_instance_id=row.plugin_instance_id,
+                daily_qr_limit=int(row.daily_qr_limit or 0),
+                monthly_qr_limit=int(row.monthly_qr_limit or 0),
                 expires_at=row.expires_at,
                 note=row.note,
                 created_at=row.created_at,
