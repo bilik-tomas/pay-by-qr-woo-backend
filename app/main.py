@@ -1,6 +1,10 @@
 from datetime import datetime, timezone
+import json
 import time
 import uuid
+from urllib.parse import urlencode
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 
 import secrets
 
@@ -26,6 +30,7 @@ from .models import AdminUser, AuditLog, Client, License
 from .schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
+    AdminLoginOptionsResponse,
     AdminSessionInfoResponse,
     AdminAuditLogItem,
     AdminAuditLogListResponse,
@@ -34,6 +39,7 @@ from .schemas import (
     AdminClientUpsertRequest,
     AdminLicenseItem,
     AdminLicenseListResponse,
+    AdminLicenseDeleteRequest,
     AdminLicenseUpsertRequest,
     AdminLicenseUpsertResponse,
     AdminUserDeleteRequest,
@@ -120,6 +126,37 @@ def _bootstrap_admin_from_env() -> None:
         pass
 
 
+def _is_turnstile_enabled() -> bool:
+    return bool(settings.admin_turnstile_site_key.strip() and settings.admin_turnstile_secret_key.strip())
+
+
+def _verify_turnstile_token(turnstile_token: str, remote_ip: str) -> bool:
+    if not _is_turnstile_enabled():
+        return True
+    token = turnstile_token.strip()
+    if not token:
+        return False
+    payload = urlencode(
+        {
+            "secret": settings.admin_turnstile_secret_key.strip(),
+            "response": token,
+            "remoteip": remote_ip,
+        }
+    ).encode("utf-8")
+    req = UrlRequest(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        data=payload,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return False
+    return bool(isinstance(data, dict) and data.get("success"))
+
+
 @app.get("/health")
 def health() -> dict:
     redis_ok = False
@@ -141,25 +178,52 @@ def startup_bootstrap_admin() -> None:
 
 
 @app.post("/admin/api/login", response_model=AdminLoginResponse)
-def admin_api_login(payload: AdminLoginRequest, response: Response, db: Session = Depends(get_db)) -> AdminLoginResponse:
+def admin_api_login(
+    payload: AdminLoginRequest,
+    response: Response,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> AdminLoginResponse:
+    if _is_turnstile_enabled():
+        remote_ip = request.client.host if request.client else ""
+        if not _verify_turnstile_token(payload.turnstile_token, remote_ip):
+            raise HTTPException(status_code=401, detail="turnstile verification failed")
     row = db.scalar(select(AdminUser).where(AdminUser.username == payload.username).limit(1))
     if not row or not row.is_active:
         raise HTTPException(status_code=401, detail="invalid credentials")
-    if not verify_password(payload.password, row.password_hash):
+    try:
+        password_ok = verify_password(payload.password, row.password_hash)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="invalid credentials") from exc
+    if not password_ok:
         raise HTTPException(status_code=401, detail="invalid credentials")
     if row.twofa_enabled:
-        if not verify_totp(row.twofa_secret, payload.otp_code):
+        try:
+            otp_ok = verify_totp(row.twofa_secret, payload.otp_code)
+        except Exception as exc:
+            raise HTTPException(status_code=401, detail="invalid otp code") from exc
+        if not otp_ok:
             raise HTTPException(status_code=401, detail="invalid otp code")
     token = issue_session_cookie(row.username)
     response.set_cookie(
         SESSION_COOKIE,
         token,
         httponly=True,
-        secure=True,
+        secure=(request.url.scheme == "https"),
         samesite="lax",
         max_age=12 * 60 * 60,
     )
     return AdminLoginResponse(ok=True, username=row.username)
+
+
+@app.get("/admin/api/login/options", response_model=AdminLoginOptionsResponse)
+def admin_api_login_options(username: str = "", db: Session = Depends(get_db)) -> AdminLoginOptionsResponse:
+    user = db.scalar(select(AdminUser).where(AdminUser.username == username.strip()).limit(1))
+    return AdminLoginOptionsResponse(
+        twofa_required=bool(user and user.is_active and user.twofa_enabled),
+        turnstile_required=_is_turnstile_enabled(),
+        turnstile_site_key=settings.admin_turnstile_site_key.strip() if _is_turnstile_enabled() else "",
+    )
 
 
 @app.post("/admin/api/logout")
@@ -190,6 +254,20 @@ def admin_api_license_upsert(
     db: Session = Depends(get_db),
 ) -> AdminLicenseUpsertResponse:
     return admin_license_upsert(payload=payload, _=None, db=db)
+
+
+@app.post("/admin/api/license/delete")
+def admin_api_license_delete(
+    payload: AdminLicenseDeleteRequest,
+    _=Depends(admin_session_dep),
+    db: Session = Depends(get_db),
+) -> dict:
+    row = db.scalar(select(License).where(License.license_key == payload.license_key).limit(1))
+    if not row:
+        raise HTTPException(status_code=404, detail="license not found")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
 
 
 @app.get("/admin/api/user/list", response_model=AdminUserListResponse)
@@ -370,6 +448,20 @@ def admin_license_list(
             for row in rows
         ]
     )
+
+
+@app.post("/v1/admin/license/delete")
+def admin_license_delete(
+    payload: AdminLicenseDeleteRequest,
+    _: None = Depends(_admin_token_dep),
+    db: Session = Depends(get_db),
+) -> dict:
+    row = db.scalar(select(License).where(License.license_key == payload.license_key).limit(1))
+    if not row:
+        raise HTTPException(status_code=404, detail="license not found")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/v1/admin/client/upsert", response_model=AdminClientResponse)

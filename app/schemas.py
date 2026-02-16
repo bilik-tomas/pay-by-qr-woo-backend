@@ -128,6 +128,7 @@ class AdminLoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=255)
     otp_code: str = Field(default="", max_length=12)
+    turnstile_token: str = Field(default="", max_length=4096)
 
 
 class AdminLoginResponse(BaseModel):
@@ -137,6 +138,12 @@ class AdminLoginResponse(BaseModel):
 
 class AdminSessionInfoResponse(BaseModel):
     username: str
+
+
+class AdminLoginOptionsResponse(BaseModel):
+    twofa_required: bool
+    turnstile_required: bool
+    turnstile_site_key: str = ""
 
 
 class AdminUserItem(BaseModel):
@@ -163,3 +170,7 @@ class AdminUserUpsertRequest(BaseModel):
 
 class AdminUserDeleteRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
+
+
+class AdminLicenseDeleteRequest(BaseModel):
+    license_key: str = Field(min_length=8, max_length=128)
