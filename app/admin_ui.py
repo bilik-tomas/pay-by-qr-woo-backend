@@ -553,23 +553,27 @@ async function login() {
 async function logout() { try { await api("/admin/api/logout", { method: "POST" }); } catch (err) {} location.reload(); }
 
 async function checkSession() {
+  let hasSession = false;
   try {
     const session = await api("/admin/api/session");
+    hasSession = true;
     document.getElementById("boot_screen").classList.add("hidden");
     document.getElementById("login_screen").classList.add("hidden");
     document.getElementById("app").classList.remove("hidden");
-    await refreshLoginOptions();
+    refreshLoginOptions().catch(() => {});
     applySessionInfo(session);
     await loadAll();
-    document.body.classList.remove("booting");
-    if (bootRevealTimer) { clearTimeout(bootRevealTimer); bootRevealTimer = null; }
   } catch (err) {
     document.getElementById("boot_screen").classList.add("hidden");
     document.getElementById("app").classList.add("hidden");
     document.getElementById("login_screen").classList.remove("hidden");
-    await refreshLoginOptions();
+    refreshLoginOptions().catch(() => {});
+  } finally {
     document.body.classList.remove("booting");
     if (bootRevealTimer) { clearTimeout(bootRevealTimer); bootRevealTimer = null; }
+    if (!hasSession) {
+      setStatus("status", "", true);
+    }
   }
 }
 
@@ -969,6 +973,15 @@ function initAdminUi() {
       document.getElementById("boot_screen").classList.remove("hidden");
     }
   }, 180);
+  setTimeout(() => {
+    if (document.body.classList.contains("booting")) {
+      document.getElementById("boot_screen").classList.add("hidden");
+      document.getElementById("app").classList.add("hidden");
+      document.getElementById("login_screen").classList.remove("hidden");
+      document.body.classList.remove("booting");
+      setStatus("status", "Session check timeout. Please login again.", false);
+    }
+  }, 6000);
   checkSession();
 }
 
