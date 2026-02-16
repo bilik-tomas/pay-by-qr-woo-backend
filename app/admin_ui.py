@@ -86,7 +86,7 @@ ADMIN_HTML = """<!doctype html>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body class="booting">
-  <div id="boot_screen" class="auth-screen">
+  <div id="boot_screen" class="auth-screen hidden">
     <div class="auth-card">
       <h1>Pay By QR Admin</h1>
       <p>Checking session...</p>
@@ -386,6 +386,7 @@ let sessionUser = "";
 let isSuperadmin = false;
 let myTwoFaEnabled = false;
 let activeTab = "licenses";
+let bootRevealTimer = null;
 
 function setStatus(elId, msg, ok=true) {
   const el = document.getElementById(elId);
@@ -561,12 +562,14 @@ async function checkSession() {
     applySessionInfo(session);
     await loadAll();
     document.body.classList.remove("booting");
+    if (bootRevealTimer) { clearTimeout(bootRevealTimer); bootRevealTimer = null; }
   } catch (err) {
     document.getElementById("boot_screen").classList.add("hidden");
     document.getElementById("app").classList.add("hidden");
     document.getElementById("login_screen").classList.remove("hidden");
     await refreshLoginOptions();
     document.body.classList.remove("booting");
+    if (bootRevealTimer) { clearTimeout(bootRevealTimer); bootRevealTimer = null; }
   }
 }
 
@@ -961,6 +964,11 @@ function bindEvents() {
 function initAdminUi() {
   bindEvents();
   showTab(tabFromHash() || "licenses", false);
+  bootRevealTimer = setTimeout(() => {
+    if (document.body.classList.contains("booting")) {
+      document.getElementById("boot_screen").classList.remove("hidden");
+    }
+  }, 180);
   checkSession();
 }
 
